@@ -30,11 +30,14 @@ function App() {
   }, []);
 
   // Sign in with Microsoft
-  const signInWithMicrosoft = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: "azure"
-    });
-  };
+const signInWithMicrosoft = async () => {
+  await supabase.auth.signInWithOAuth({
+    provider: "azure",
+    options: {
+      redirectTo: window.location.origin  // Will redirect to current domain after login
+    }
+  });
+};
 
   // Logout
   const handleLogout = async () => {

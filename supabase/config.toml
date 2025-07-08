@@ -1,0 +1,66 @@
+
+[functions.approve-leave]
+enabled = true
+verify_jwt = true
+import_map = "./functions/approve-leave/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/approve-leave/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/approve-leave/*.html" ]
+
+[functions.reject-leave]
+enabled = true
+verify_jwt = true
+import_map = "./functions/reject-leave/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/reject-leave/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/reject-leave/*.html" ]
+
+[functions.deduct-leave]
+enabled = true
+verify_jwt = true
+import_map = "./functions/deduct-leave/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/deduct-leave/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/deduct-leave/*.html" ]
+
+[functions.reverse-leave]
+enabled = true
+verify_jwt = true
+import_map = "./functions/reverse-leave/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/reverse-leave/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/reverse-leave/*.html" ]
+
+[functions.cancel-leave]
+enabled = true
+verify_jwt = true
+import_map = "./functions/cancel-leave/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/cancel-leave/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/cancel-leave/*.html" ]
+
+[functions.create-leave]
+enabled = true
+verify_jwt = true
+import_map = "./functions/create-leave/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/create-leave/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/create-leave/*.html" ]

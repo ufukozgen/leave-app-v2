@@ -1,5 +1,14 @@
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  body, button, input, select, textarea {
+  font-family: 'Urbanist', Arial, Helvetica, sans-serif;
+  color: #434344;
+}
+h1, h2, h3, h4, h5 {
+  font-family: 'Urbanist', Arial, Helvetica, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
@@ -65,4 +74,218 @@ button:focus-visible {
   button {
     background-color: #f9f9f9;
   }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 3px solid transparent;
+  border-top: 3px solid #E0653A;  /* use your alert color, or any accent */
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 0;
+}
+
+.vacation-card {
+  width: 100%;
+  max-width: 650px;
+  margin: 0 auto 32px auto;
+  border-radius: 22px;
+  background: #fff;
+  border: 2px solid #A8D2F2;
+  box-shadow: 0 2px 14px #CDE5F477;
+  padding: 30px 30px 16px 30px;
+  font-family: 'Urbanist', Arial, sans-serif;
+}
+
+.vacation-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 18px;
+}
+
+@media (min-width: 600px) {
+  .vacation-card-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.vacation-greeting {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #F39200;
+  margin-bottom: 2px;
+}
+
+.vacation-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #434344;
+}
+
+.vacation-stats-row {
+  display: flex;
+  gap: 34px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.vacation-stat {
+  text-align: center;
+}
+
+.vacation-stat-label {
+  color: #818285;
+  font-size: 0.96rem;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.vacation-stat-value {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: #434344;
+}
+
+.vacation-remaining-label {
+  color: #F39200;
+  font-weight: 700;
+  font-size: 1rem;
+  margin-bottom: 2px;
+}
+
+.vacation-remaining-value {
+  display: inline-block;
+  background: #F39200;
+  color: #fff;
+  font-size: 2rem;
+  font-weight: 900;
+  border-radius: 2rem;
+  padding: 6px 34px;
+  min-width: 88px;
+  box-shadow: 0 2px 8px #F3920044;
+  letter-spacing: 1.2px;
+}
+
+.vacation-card-note {
+  display: flex;
+  align-items: center;
+  margin-top: 18px;
+  font-size: 0.96rem;
+  color: #434344;
+  gap: 8px;
+}
+
+.vacation-card-note-icon {
+  background: #A8D2F2;
+  color: #434344;
+  font-weight: bold;
+  border-radius: 6px;
+  padding: 1px 7px 1px 7px;
+  font-size: 1.1em;
+  margin-right: 2px;
+}
+
+.main-content {
+  max-width: 650px;
+  margin: 0 auto 40px auto;
+  background: #fff;
+  border-radius: 22px;
+  box-shadow: 0 2px 14px #CDE5F477;
+  border: 1.8px solid #CDE5F4;
+  padding: 32px 38px;
+  overflow-x: auto;
+}
+
+.main-content table {
+  width: 100%;
+  table-layout: fixed;    /* <-- Key for forcing columns to fit container! */
+  word-break: break-word;
+}
+
+.main-content th, .main-content td {
+  overflow-wrap: anywhere; /* Break long words/emails etc */
+  word-break: break-word;
+}
+
+/* --- Custom Select Styling --- */
+.custom-select-wrapper {
+  position: relative;
+  width: 230px;
+  margin-bottom: 24px;
+}
+.custom-select-label {
+  display: block;
+  font-family: Urbanist, Arial, sans-serif;
+  color: #F39200;
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-bottom: 8px;
+  margin-left: 2px;
+}
+.custom-select {
+  width: 100%;
+  font-family: Urbanist, Arial, sans-serif;
+  background: #F8FBFC;
+  color: #434344;
+  border: 2px solid #A8D2F2;
+  border-radius: 16px;
+  padding: 12px 40px 12px 16px;
+  min-height: 44px;
+  font-size: 1.07rem;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(168, 210, 242, 0.08);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.custom-select:focus {
+  border-color: #F39200;
+  background: #fff;
+}
+.custom-select-chevron {
+  position: absolute;
+  right: 16px;
+  top: 66%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  z-index: 1;
+  /* Remove align-items: center, display: flex */
+}
+.custom-select-chevron svg {
+  display: block;
+  height: 28px;
+  width: 28px;
+}
+.employee-console-container {
+  background: #F8FBFC;
+  border: 2px solid #F39200;
+  border-radius: 24px;
+  padding: 32px 32px 40px 32px;
+  max-width: 980px;
+  margin: 32px auto;
+  box-shadow: 0 2px 12px rgba(243,146,0,0.08);
+  transition: box-shadow 0.23s cubic-bezier(.4,2,.4,1);
+}
+
+.employee-console-container:hover {
+  box-shadow: 0 8px 36px 0 rgba(243,146,0,0.24), 0 1.5px 10px 0 rgba(168,210,242,0.14);
+}
+
+
+.cancel-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px #F39200; /* orange glow to match brand */
+  border-radius: 50%;
 }

@@ -1,159 +1,209 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
+import LeaveRequestForm from "./components/LeaveRequestForm";
+import LeaveRequestList from "./components/LeaveRequestList";
+import LeaveAppContent from "./components/LeaveAppContent";
+import VacationBalanceCard from "./components/VacationBalanceCard";
+import ManagerPanel from "./components/ManagerPanel";
+import EmployeeLeaveConsole from "./components/EmployeeLeaveConsole";
+import Header from "./components/Header";
+import { useUser } from "./components/UserContext";
 import { supabase } from "./supabaseClient";
+import AdminPanel from "./components/AdminPanel";
+import { CSSTransition, SwitchTransition } from "react-transition-group";
+import "./tabfade.css";
+import { useRef } from "react";
+import { Toaster } from "react-hot-toast";
 
-function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [dbUser, setDbUser] = useState(null);
-  const [dbLoading, setDbLoading] = useState(false);
 
-  // 1. Check login session on mount and listen for auth changes
+export default function App() {
+  const [tab, setTab] = useState("request");
+  const { dbUser } = useUser();
+
+  const [pendingCount, setPendingCount] = useState(0);
+  const [approvedCount, setApprovedCount] = useState(0);
+
+  const isManager = dbUser?.role === "manager" || dbUser?.role === "admin";
+  const isAdmin = dbUser?.role === "admin";
+  const nodeRef = useRef(null);
+
   useEffect(() => {
-    let ignore = false;
+    if (!isManager || !dbUser?.email) return;
+    async function fetchCounts() {
+      const { count: pending } = await supabase
+        .from("leave_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("manager_email", dbUser.email)
+        .eq("status", "Pending");
+      setPendingCount(pending || 0);
 
-    async function getSession() {
-      const { data } = await supabase.auth.getSession();
-      if (!ignore) {
-        setUser(data?.session?.user ?? null);
-        setLoading(false);
-      }
+      const { count: approved } = await supabase
+        .from("leave_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("manager_email", dbUser.email)
+        .eq("status", "Approved");
+      setApprovedCount(approved || 0);
     }
-    getSession();
+    fetchCounts();
+  }, [dbUser, isManager, tab]);
 
-    // Listen for login/logout
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => {
-      ignore = true;
-      listener.subscription.unsubscribe();
-    };
-  }, []);
-
-  // 2. After login, check/insert user in 'users' table
-  useEffect(() => {
-    if (!user) {
-      setDbUser(null);
-      return;
-    }
-    setDbLoading(true);
-
-    const syncUser = async () => {
-      // 1. Try to fetch user from 'users' table
-      const { data: existing, error: selectError } = await supabase
-        .from("users")
-        .select("*")
-        .eq("email", user.email)
-        .single();
-
-      if (selectError && selectError.code !== "PGRST116" && selectError.code !== "406") {
-        // Not 'No rows found', log error
-        console.error("Select error:", selectError);
-        setDbLoading(false);
-        return;
-      }
-
-      if (!existing) {
-        // 2. If not found, insert user
-        const { data: inserted, error: insertError } = await supabase
-          .from("users")
-          .insert([
-            {
-              email: user.email,
-              name: user.user_metadata?.full_name || "",
-              role: "user",
-              manager_email: "", // Fill or update as needed later
-              profile_pic: user.user_metadata?.avatar_url || ""
-            }
-          ])
-          .single();
-
-        if (insertError) {
-          console.error("Insert error:", insertError);
-        } else {
-          setDbUser(inserted);
-        }
-      } else {
-        setDbUser(existing);
-      }
-      setDbLoading(false);
-    };
-
-    syncUser();
-  }, [user]);
-
-  // 3. Login with Microsoft (always redirect back to current site)
-  const signInWithMicrosoft = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: "azure",
-      options: {
-        redirectTo: window.location.origin
-      }
-    });
-  };
-
-  // 4. Logout
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setDbUser(null);
-  };
-
-  if (loading) {
-    return <div>Loading authentication...</div>;
-  }
+  const managerTotal = pendingCount + approvedCount;
 
   return (
-    <div style={{
-      maxWidth: 480,
-      margin: "5em auto",
-      padding: 32,
-      border: "1px solid #ddd",
-      borderRadius: 10,
-      textAlign: "center"
-    }}>
-      <h2>Leave App v2 – Microsoft Login Demo</h2>
+    <>
+    
+    <Toaster position="top-center" />
 
-      {!user ? (
-        <button onClick={signInWithMicrosoft}
-                style={{ fontSize: 18, padding: "12px 24px", cursor: "pointer" }}>
-          Sign in with Microsoft
-        </button>
-      ) : (
-        <>
-          <div style={{ margin: "32px 0" }}>
-            <div><b>Email:</b> {user.email}</div>
-            {user.user_metadata && (
-              <div>
-                {user.user_metadata.full_name && <div><b>Name:</b> {user.user_metadata.full_name}</div>}
-                {user.user_metadata.avatar_url && (
-                  <img
-                    src={user.user_metadata.avatar_url}
-                    alt="profile"
-                    style={{ width: 56, height: 56, borderRadius: "50%", marginTop: 8 }}
-                  />
-                )}
-              </div>
-            )}
-          </div>
-          <button onClick={handleLogout}
-                  style={{ fontSize: 16, padding: "8px 16px", cursor: "pointer", marginBottom: 24 }}>
-            Logout
-          </button>
+   
+    <div
+      style={{
+        minHeight: 800, // Increased for consistency
+        maxWidth: 1040,
+        width: "100%",
+        margin: "32px auto",
+        padding: "0 0 36px 0",
+        background: "#fff",
+        borderRadius: 22,
+        boxShadow: "0 0 32px #cde5f4",
+        fontFamily: "'Urbanist', Arial, sans-serif",
+        position: "relative",
+        transition: "min-height 0.3s",
+        display: "flex",
+        flexDirection: "column"
+      }}
+    >
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "18px 32px 0 32px",
+        fontFamily: "'Urbanist', Arial, sans-serif"
+      }}>
+        <div style={{ fontWeight: 900, fontSize: 32, letterSpacing: 1, color: "#F39200", marginBottom: 20 }}>
+          🏖️ İzin Uygulaması v2
+        </div>
+        {/* Optionally: user info, logout, etc. */}
+      </div>
+        
+        <VacationBalanceCard userId={dbUser?.id} launchDate="01.07.2025" />
 
-          <div style={{ marginTop: 32 }}>
-            {dbLoading && <p>Checking your database registration...</p>}
-            {dbUser && (
-              <p style={{ color: "#468847", fontWeight: "bold" }}>
-                ✅ You are registered in the users table as: {dbUser.name || dbUser.email}
-              </p>
-            )}
-          </div>
-        </>
-      )}
+      <nav style={{
+        display: "flex",
+        gap: 8,
+        padding: "20px 32px 0 32px",
+        marginBottom: 16
+      }}>
+        <TabButton active={tab === "request"} onClick={() => setTab("request")}>İzin Talebi</TabButton>
+        <TabButton active={tab === "list"} onClick={() => setTab("list")}>İzin Taleplerim</TabButton>
+        {isManager && (<TabButton active={tab === "manager"}
+                          onClick={() => setTab("manager")}badge={managerTotal}>Yönetici </TabButton>
+          )}
+        {isManager && (
+  <TabButton
+    active={tab === "employee-console"}
+    onClick={() => setTab("employee-console")}
+  >
+    Çalışan Takip Konsolu
+  </TabButton>
+)}
+
+        {isAdmin && (
+          <TabButton
+            active={tab === "admin"}
+            onClick={() => setTab("admin")}
+          >
+            Admin Paneli
+          </TabButton>
+        )}
+      </nav>
+      <SwitchTransition>
+  <CSSTransition
+    key={tab}
+    nodeRef={nodeRef}
+    timeout={200}
+    classNames="fade"
+    unmountOnExit
+  ><div
+  ref={nodeRef}
+  style={{
+    padding: "18px 28px",
+    width: "100%",
+    minHeight: 600,
+    boxSizing: "border-box",
+  }}
+>
+  {(tab === "request" || tab === "list") && (
+  <div className="main-content">
+    {/* These are now both in the same inner pretty card! */}
+    {tab === "request" && <LeaveAppContent user={dbUser} />}
+    {tab === "list" && <LeaveRequestList />}
+  </div>
+)}
+{tab === "admin" && isAdmin && <AdminPanel />}
+{tab === "manager" && isManager && (
+  <ManagerPanel
+    pendingCount={pendingCount}
+    approvedCount={approvedCount}
+  />
+)}
+{tab === "employee-console" && isManager && (
+  <EmployeeLeaveConsole managerEmail={dbUser.email} />
+)}
+
+</div>
+
+  </CSSTransition>
+</SwitchTransition>
     </div>
+     </>
   );
 }
 
-export default App;
+
+
+
+function TabButton({ active, children, badge, ...props }) {
+  return (
+    <button
+      {...props}
+      style={{
+        background: active ? "#F39200" : "#CDE5F4",
+        color: active ? "#fff" : "#434344",
+        fontWeight: 700,
+        fontFamily: "Urbanist, Arial, sans-serif",
+        fontSize: 20,
+        border: "none",
+        borderRadius: 12,
+        padding: "12px 34px",
+        boxShadow: active ? "0 2px 8px #F3920022" : "none",
+        cursor: "pointer",
+        marginRight: 12,
+        position: "relative",
+      }}
+    >
+      {children}
+      {badge > 0 && (
+        <span
+          style={{
+            position: "absolute",
+            top: 7,
+            right: 18,
+            minWidth: 24,
+            height: 24,
+            background: "#E0653A",
+            color: "#fff",
+            fontWeight: 900,
+            borderRadius: "50%",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 15,
+            boxShadow: "0 1px 4px #E0653A44",
+          }}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+

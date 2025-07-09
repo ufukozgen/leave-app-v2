@@ -81,7 +81,62 @@ export default function App() {
         <div style={{ fontWeight: 900, fontSize: 32, letterSpacing: 1, color: "#F39200", marginBottom: 20 }}>
           🏖️ İzin Uygulaması v2
         </div>
-        {/* Optionally: user info, logout, etc. */}
+       <div style={{
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "18px 32px 0 32px",
+  fontFamily: "'Urbanist', Arial, sans-serif"
+}}>
+  <div style={{ fontWeight: 900, fontSize: 32, letterSpacing: 1, color: "#F39200", marginBottom: 20 }}>
+    🏖️ İzin Uygulaması v2
+  </div>
+  {/* LOGIN/LOGOUT BUTTONS */}
+  <div>
+    {dbUser ? (
+      <>
+        <span style={{ marginRight: 16, fontWeight: 600, color: "#434344" }}>
+          {dbUser.name || dbUser.email}
+        </span>
+        <button
+          onClick={async () => {
+            await supabase.auth.signOut();
+            window.location.reload();
+          }}
+          style={{
+            background: "#E0653A",
+            color: "#fff",
+            fontWeight: 700,
+            border: "none",
+            borderRadius: 8,
+            padding: "8px 28px",
+            fontSize: 18,
+            cursor: "pointer"
+          }}
+        >Çıkış Yap</button>
+      </>
+    ) : (
+      <button
+        onClick={() =>
+          supabase.auth.signInWithOAuth({
+            provider: "azure",
+            options: { redirectTo: window.location.origin },
+          })
+        }
+        style={{
+          background: "#F39200",
+          color: "#fff",
+          fontWeight: 700,
+          border: "none",
+          borderRadius: 8,
+          padding: "8px 28px",
+          fontSize: 18,
+          cursor: "pointer"
+        }}
+      >Giriş Yap</button>
+    )}
+  </div>
+</div>
       </div>
         
         <VacationBalanceCard userId={dbUser?.id} launchDate="01.07.2025" />

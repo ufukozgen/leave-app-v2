@@ -230,33 +230,12 @@ return (
           className="vacation-stats-row"
           style={{
             display: "flex",
-            gap: 28,
+            gap: 0,
             alignItems: "flex-end",
             marginTop: 0,
           }}
         >
-          <div className="vacation-stat" style={{ textAlign: "center" }}>
-            <div
-              className="vacation-stat-label"
-              style={{ fontSize: 15, color: "#818285", fontWeight: 600, marginBottom: 1 }}
-            >
-              Kazanılan
-            </div>
-            <div className="vacation-stat-value" style={{ fontSize: 22, fontWeight: 700 }}>
-              {balance.accrued ?? 0}{" "}
-              <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>gün</span>
-            </div>
-          </div>
-          <div className="vacation-stat" style={{ textAlign: "center" }}>
-            <div className="vacation-stat-label" style={{ fontSize: 15, color: "#818285", fontWeight: 600, marginBottom: 1 }}>
-              Kullanılan
-            </div>
-            <div className="vacation-stat-value" style={{ fontSize: 22, fontWeight: 700 }}>
-              {balance.used ?? 0}{" "}
-              <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>gün</span>
-            </div>
-          </div>
-          <div className="vacation-stat" style={{ textAlign: "center" }}>
+           <div className="vacation-stat" style={{ textAlign: "center" }}>
             <div className="vacation-remaining-label" style={{ fontSize: 15, color: "#F39200", fontWeight: 700, marginBottom: 1 }}>
               Kalan
             </div>
@@ -281,37 +260,6 @@ return (
           </div>
         </div>
       </div>
-    </div>
-    {/* Info note */}
-    <div
-      className="vacation-card-note"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        marginTop: 8,
-        color: "#818285",
-        fontSize: 15,
-        background: "#F8FBFD",
-        borderRadius: 8,
-        padding: "7px 16px",
-        gap: 10,
-      }}
-    >
-      <span className="vacation-card-note-icon" style={{
-        display: "inline-block",
-        width: 20, height: 20,
-        background: "#A8D2F2",
-        color: "#434344",
-        borderRadius: "50%",
-        fontWeight: 700,
-        textAlign: "center",
-        fontSize: 16,
-        lineHeight: "20px",
-        marginRight: 6
-      }}>i</span>
-      <span>
-        Kazanılan ve kullanılan izinler <b>{launchDate}</b> tarihinden itibaren hesaplanmıştır.
-      </span>
     </div>
   </div>
 );

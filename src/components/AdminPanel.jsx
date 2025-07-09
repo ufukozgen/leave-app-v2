@@ -15,14 +15,6 @@ function formatDateTR(dateStr) {
   return `${day}/${month}/${year}`;
 }
 
-
-
-function balanceMismatch(accrued, used, remaining) {
-  if ([accrued, used, remaining].some(v => isNaN(v) || v === "")) return false;
-  return Number(accrued) !== Number(used) + Number(remaining);
-}
-
-
 export default function AdminPanel() {
   const { dbUser, loading } = useUser();
   const [users, setUsers] = useState([]);
@@ -100,10 +92,8 @@ export default function AdminPanel() {
     setMessage("");
     const bal = getBal(confirmingUser?.id);
     const key = (field) => `${confirmingUser.id}_${field}`;
-const parseOrZero = val => isNaN(Number(val)) || val === "" ? 0 : Number(val);
-const accrued = parseOrZero(editing[key("accrued")] ?? bal.accrued ?? "");
-const used = parseOrZero(editing[key("used")] ?? bal.used ?? "");
-const remaining = parseOrZero(editing[key("remaining")] ?? bal.remaining ?? "");
+    const parseOrZero = val => isNaN(Number(val)) || val === "" ? 0 : Number(val);
+    const remaining = parseOrZero(editing[key("remaining")] ?? getBal(confirmingUser?.id)?.remaining ?? "");
 
     let token = "";
     try {
@@ -127,8 +117,6 @@ const remaining = parseOrZero(editing[key("remaining")] ?? bal.remaining ?? "");
         },
         body: JSON.stringify({
           user_id: confirmingUser.id,
-          accrued,
-          used,
           remaining,
           admin_email: dbUser.email,
           admin_name: dbUser.name,
@@ -230,127 +218,86 @@ if (!annualType) {
       }}
     >
       <h2 style={{ fontWeight: 700, marginBottom: 24, color: "#434344" }}>Yıllık İzin Bakiyeleri (Yönetici)</h2>
-      {message && (
-        <div style={{
-          color: message.startsWith("Kaydetme") || message.startsWith("Bakiyeyi") ? "#E0653A" : "#468847",
-          fontWeight: 700,
-          marginBottom: 18
-        }}>
-          {message}
-        </div>
-      )}
-      <table style={{ width: "100%", fontSize: 16, borderSpacing: 0 }}>
-        <thead>
-          <tr style={{ background: "#CDE5F4", color: "#434344" }}>
-            <th style={th}>Kullanıcı</th>
-            <th style={th}>E-posta</th>
-            <th style={th}>Kazandırılan</th>
-            <th style={th}>Kullanılan</th>
-            <th style={th}>Kalan</th>
-            <th style={th}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map(user => {
-  const bal = getBal(user.id);
-  const key = (field) => `${user.id}_${field}`;
-  const accrued = editing[key("accrued")] ?? bal.accrued ?? "";
-  const used = editing[key("used")] ?? bal.used ?? "";
-  const remaining = editing[key("remaining")] ?? bal.remaining ?? "";
+{message && (
+  <div style={{
+    color: "#468847",
+    fontWeight: 700,
+    marginBottom: 18
+  }}>
+    {message}
+  </div>
+)}
+<table style={{ width: "100%", fontSize: 16, borderSpacing: 0 }}>
+  <thead>
+    <tr style={{ background: "#CDE5F4", color: "#434344" }}>
+      <th style={th}>Kullanıcı</th>
+      <th style={th}>E-posta</th>
+      <th style={th}>Kalan</th>
+      <th style={th}></th>
+    </tr>
+  </thead>
+  <tbody>
+    {users.map(user => {
+      const bal = getBal(user.id);
+      const key = (field) => `${user.id}_${field}`;
+      const remaining = editing[key("remaining")] ?? bal.remaining ?? "";
 
-  const showWarning = balanceMismatch(accrued, used, remaining);
-
-  return (
-    <React.Fragment key={user.id}>
-      <tr>
-        <td style={td}>{user.name || user.email}</td>
-        <td style={td}>{user.email}</td>
-        <td style={td}>
-          <input
-            type="number"
-            value={accrued}
-            onChange={e => onEdit(user.id, "accrued", e.target.value)}
-            style={inputStyle}
-          />
-        </td>
-        <td style={td}>
-          <input
-            type="number"
-            value={used}
-            onChange={e => onEdit(user.id, "used", e.target.value)}
-            style={inputStyle}
-          />
-        </td>
-        <td style={td}>
-          <input
-            type="number"
-            value={remaining}
-            onChange={e => onEdit(user.id, "remaining", e.target.value)}
-            style={inputStyle}
-          />
-        </td>
-        <td style={td}>
-          <button
-            style={{
-              background: "#F39200",
-              color: "#fff",
-              border: "none",
-              borderRadius: 7,
-              padding: "5px 12px",
-              fontWeight: 600,
-              cursor:
-                savingUserId === user.id || showWarning
-                  ? "not-allowed"
-                  : "pointer",
-              minWidth: 90,
-              position: "relative"
-            }}
-            disabled={savingUserId === user.id || showWarning}
-            onClick={() => onSaveClick(user)}
-          >
-            {savingUserId === user.id ? (
-              <>
-                <span
-                  className="spinner"
-                  style={{
-                    width: 16,
-                    height: 16,
-                    border: "2px solid #fff",
-                    borderTop: "2px solid #F0B357",
-                    borderRadius: "50%",
-                    display: "inline-block",
-                    marginRight: 6,
-                    animation: "spin 1s linear infinite",
-                    verticalAlign: "middle"
-                  }}
-                />
-                Kaydediliyor…
-              </>
-            ) : "Kaydet"}
-          </button>
-        </td>
-      </tr>
-      {showWarning && (
-        <tr>
-          <td colSpan={6} style={{
-            color: "#E0653A",
-            background: "#fff7f2",
-            borderRadius: 8,
-            fontWeight: 600,
-            fontSize: 15,
-            padding: "7px 16px",
-            textAlign: "left"
-          }}>
-            ⚠️ Uyarı: Kullanılan + Kalan toplamı Kazandırılan'a eşit değil!
+      return (
+        <tr key={user.id}>
+          <td style={td}>{user.name || user.email}</td>
+          <td style={td}>{user.email}</td>
+          <td style={td}>
+            <input
+              type="number"
+              value={remaining}
+              onChange={e => onEdit(user.id, "remaining", e.target.value)}
+              style={inputStyle}
+              min={0}
+            />
+          </td>
+          <td style={td}>
+            <button
+              style={{
+                background: "#F39200",
+                color: "#fff",
+                border: "none",
+                borderRadius: 7,
+                padding: "5px 12px",
+                fontWeight: 600,
+                cursor: savingUserId === user.id ? "not-allowed" : "pointer",
+                minWidth: 90,
+                position: "relative"
+              }}
+              disabled={savingUserId === user.id}
+              onClick={() => onSaveClick(user)}
+            >
+              {savingUserId === user.id ? (
+                <>
+                  <span
+                    className="spinner"
+                    style={{
+                      width: 16,
+                      height: 16,
+                      border: "2px solid #fff",
+                      borderTop: "2px solid #F0B357",
+                      borderRadius: "50%",
+                      display: "inline-block",
+                      marginRight: 6,
+                      animation: "spin 1s linear infinite",
+                      verticalAlign: "middle"
+                    }}
+                  />
+                  Kaydediliyor…
+                </>
+              ) : "Kaydet"}
+            </button>
           </td>
         </tr>
-      )}
-    </React.Fragment>
-  );
-})}
+      );
+    })}
+  </tbody>
+</table>
 
-        </tbody>
-      </table>
 
       {/* Confirmation Modal/Dialog */}
       {confirmingUser && (

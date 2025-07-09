@@ -2,7 +2,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.0.0";
-import { sendGraphEmail } from "../helpers/sendGraphEmail.ts"; // works just like your deduct-leave!
+import { sendGraphEmail } from "../helpers/sendGraphEmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://leave-app-v2.vercel.app",
@@ -17,9 +17,7 @@ serve(async (req) => {
   try {
     const {
       user_id,
-      accrued,
-      used,
-      remaining,
+      remaining,      // only this is needed
       admin_email,
       admin_name,
       note,
@@ -85,13 +83,13 @@ serve(async (req) => {
       .eq("user_id", user_id)
       .maybeSingle();
 
-    // Prepare balance fields (adapt leave_type_id if needed)
+    const oldRemaining = oldBalance?.remaining ?? 0;
+    const action = remaining > oldRemaining ? "accrual" : "correction";
+
+    // Prepare balance fields
     let balanceFields = {
       user_id,
       leave_type_id: oldBalance?.leave_type_id ?? "9664d16e-0a1c-441c-842a-b7371252f943",
-
-      accrued,
-      used,
       remaining,
       last_updated: new Date().toISOString(),
     };
@@ -112,35 +110,31 @@ serve(async (req) => {
       balId = data?.[0]?.id;
     }
 
-    // Log the change
-    await supabase.from("logs").insert([{
+    // Log the change in balance_logs
+    await supabase.from("balance_logs").insert([{
       user_id: user_id,
-      actor_email: admin_email,
-      action: balId ? "admin_update_balance" : "admin_create_balance",
-      target_table: "leave_balances",
-      target_id: balId,
-      status_before: oldBalance ? JSON.stringify({
-        accrued: oldBalance.accrued,
-        used: oldBalance.used,
-        remaining: oldBalance.remaining,
-      }) : null,
-      status_after: JSON.stringify({ accrued, used, remaining }),
-      details: {
-        user_email: user.email,
-        leave_type: "Annual",
-        note: note ?? "",
-      }
+      admin_id: actor.id,
+      admin_email: admin_email,
+      action,
+      remaining_before: oldRemaining,
+      remaining_after: remaining,
+      note: note ?? "",
+      created_at: new Date().toISOString(),
     }]);
 
-    // Prepare email
+    // Prepare e-mail notification content
+    const actionDesc = action === "accrual"
+      ? `Yıllık izin bakiyeniz <b>${remaining - oldRemaining}</b> gün artırıldı.`
+      : `Yıllık izin bakiyeniz <b>${oldRemaining - remaining}</b> gün azaltıldı/düzeltildi.`;
+
     const subject = "Yıllık İzin Bakiyesi Güncellendi";
     const htmlEmployee = `
       <p>Sayın ${user.name || user.email},</p>
-      <p>Yıllık izin bakiyeniz ${admin_name ? `yönetici/İK personeli <b>${admin_name}</b>` : "yetkili"} tarafından güncellenmiştir.</p>
+      <p>${admin_name ? `Yönetici/İK personeli <b>${admin_name}</b>` : "Yetkili"} tarafından yıllık izin bakiyeniz güncellendi.</p>
+      <p>${actionDesc}</p>
       <ul>
-        <li>Kazandırılan: <b>${accrued}</b> gün</li>
-        <li>Kullanılan: <b>${used}</b> gün</li>
-        <li>Kalan: <b>${remaining}</b> gün</li>
+        <li><b>Önceki bakiye:</b> ${oldRemaining} gün</li>
+        <li><b>Yeni bakiye:</b> ${remaining} gün</li>
       </ul>
       ${note ? `<p><b>Açıklama:</b> ${note}</p>` : ""}
       <p>Detaylı bilgi için uygulamayı kontrol edebilirsiniz.</p>
@@ -159,10 +153,10 @@ serve(async (req) => {
       const htmlManager = `
         <p>Sayın ${manager.name || manager.email},</p>
         <p>Sorumluluğunuzdaki <b>${user.name || user.email}</b> çalışanının yıllık izin bakiyesi güncellendi.</p>
+        <p>${actionDesc}</p>
         <ul>
-          <li>Kazandırılan: <b>${accrued}</b> gün</li>
-          <li>Kullanılan: <b>${used}</b> gün</li>
-          <li>Kalan: <b>${remaining}</b> gün</li>
+          <li><b>Önceki bakiye:</b> ${oldRemaining} gün</li>
+          <li><b>Yeni bakiye:</b> ${remaining} gün</li>
         </ul>
         ${note ? `<p><b>Açıklama:</b> ${note}</p>` : ""}
         <p>Detaylı bilgi için uygulamayı kontrol edebilirsiniz.</p>

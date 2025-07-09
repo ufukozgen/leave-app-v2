@@ -111,20 +111,51 @@ function statusDot(color, label, rowId) {
   const [processing, setProcessing] = useState(null);
   const [message, setMessage] = useState("");
 
-  useEffect(() => {
-    if (!dbUser?.email) return;
-    setLoading(true);
-    supabase
-      .from("leave_requests")
-      .select("*")
-      .eq("manager_email", dbUser.email)
-      .eq("status", tabStatus[tab])
-      .then(({ data, error }) => {
-        if (error) setRequests([]);
-        else setRequests(data || []);
+useEffect(() => {
+  if (!dbUser?.email) return;
+  setLoading(true);
+
+  // 1. Fetch all requests for the current manager & tab
+  supabase
+    .from("leave_requests")
+    .select("*")
+    .eq("manager_email", dbUser.email)
+    .eq("status", tabStatus[tab])
+    .then(async ({ data: requests, error }) => {
+      if (error || !requests) {
+        setRequests([]);
         setLoading(false);
+        return;
+      }
+
+      // 2. Get unique user_ids from these requests
+      const userIds = [...new Set(requests.map(r => r.user_id))];
+      if (userIds.length === 0) {
+        setRequests(requests); // Just in case, but should be empty already
+        setLoading(false);
+        return;
+      }
+
+      // 3. Fetch leave_balances for these users
+      const { data: balances } = await supabase
+        .from("leave_balances")
+        .select("user_id, remaining")
+        .in("user_id", userIds);
+
+      // 4. Attach balance info to each request
+      const withBalances = requests.map(req => {
+        const bal = balances?.find(b => b.user_id === req.user_id);
+        return {
+          ...req,
+          remaining_days: bal?.remaining ?? 0,
+        };
       });
-  }, [dbUser, tab]);
+
+      setRequests(withBalances);
+      setLoading(false);
+    });
+}, [dbUser, tab]);
+
 
   async function callEdgeFunction(endpoint, bodyObj) {
     setMessage("");

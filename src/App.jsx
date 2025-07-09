@@ -88,9 +88,7 @@ export default function App() {
   padding: "18px 32px 0 32px",
   fontFamily: "'Urbanist', Arial, sans-serif"
 }}>
-  <div style={{ fontWeight: 900, fontSize: 32, letterSpacing: 1, color: "#F39200", marginBottom: 20 }}>
-    🏖️ İzin Uygulaması v2
-  </div>
+
   {/* LOGIN/LOGOUT BUTTONS */}
   <div>
     {dbUser ? (

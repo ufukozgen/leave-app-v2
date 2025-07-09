@@ -134,8 +134,6 @@ export default function AdminPanel() {
               found = true;
               return {
                 ...bal,
-                accrued,
-                used,
                 remaining,
                 last_updated: new Date().toISOString(),
               };
@@ -146,8 +144,6 @@ export default function AdminPanel() {
             updated.push({
               user_id: confirmingUser.id,
               leave_type_id: annualType.id,
-              accrued,
-              used,
               remaining,
               last_updated: new Date().toISOString(),
             });

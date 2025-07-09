@@ -24,3 +24,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+
+# Secret scripts
+set-admin-claim.js
+
+# BFG reports (if you want)
+leave-app-v2.git.bfg-report/

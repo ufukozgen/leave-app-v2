@@ -22,8 +22,11 @@ export default function LeaveRequestForm() {
   const [result, setResult] = useState("");
 
   function isHoliday(date) {
-    return holidays.includes(format(date, "yyyy-MM-dd"));
-  }
+  const d = format(date, "yyyy-MM-dd");
+  // holidaysMap[d] is defined AND not a half-day holiday
+  console.log("holidaysMap", holidaysMap);
+  return holidaysMap[d] && !holidaysMap[d].is_half_day;
+}
 
   useEffect(() => {
     supabase

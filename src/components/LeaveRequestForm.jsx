@@ -8,6 +8,7 @@ import { addDays, isWeekend, format, isAfter } from "date-fns";
 export default function LeaveRequestForm() {
   const { dbUser, loading } = useUser();
   const [annualType, setAnnualType] = useState(null);
+  const [holidaysMap, setHolidaysMap] = useState({});
   const [holidays, setHolidays] = useState([]);
   const [form, setForm] = useState({
     start_date: null,

@@ -1,9 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.0.0";
-import { sendGraphEmail } from "./sendGraphEmail.ts";
+import { sendGraphEmail } from "../helpers/sendGraphEmail.ts";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*", // Change '*' to your domain in prod
+  "Access-Control-Allow-Origin": "https://leave-app-v2.vercel.app",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
@@ -16,7 +16,7 @@ serve(async (req) => {
     const { request_id, rejection_reason } = await req.json();
     const authHeader = req.headers.get("authorization") || "";
     const jwt = authHeader.replace("Bearer ", "");
-
+    
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -91,6 +91,33 @@ serve(async (req) => {
         status: 500, headers: corsHeaders
       });
     }
+
+    try {
+  await supabase.from("logs").insert([
+    {
+      user_id: user.id,              // the actor's user ID from JWT
+      actor_email: user.email,       // actor's email
+      action: "reject_request",         // e.g. "approve_request"
+      target_table: "leave_requests",
+      target_id: leave.id,
+      status_before: leave.status,  
+      status_after: "Rejected",      // new leave status string
+      details: {
+        start_date: leave.start_date,
+        end_date: leave.end_date,
+        days: leave.days,
+        location: leave.location,
+        note: leave.note,
+        rejection_reason: rejection_reason,
+        // add any other useful info
+      }
+    }
+  ]);
+} catch (logError) {
+  console.error("Failed to log action:", logError);
+  // Optional: handle logging failure gracefully without blocking main flow
+}
+
 
     // Notify the employee
     const { data: employee } = await supabase

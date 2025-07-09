@@ -292,7 +292,7 @@ async function handleCancel(req) {
                       )}
                     </td>
                     <td style={{ textAlign: "center" }}>
-                      {!isManagerView && req.status === "Pending" && (
+                      {!isManagerView && (req.status === "Pending" || req.status === "Approved") && (
                         <button
                           className="cancel-button"
                           onClick={() => handleCancel(req)}

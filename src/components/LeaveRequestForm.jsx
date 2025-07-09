@@ -33,7 +33,19 @@ export default function LeaveRequestForm() {
       });
   }, []);
 
-  // Fetch Annual leave type on mount
+useEffect(() => {
+  async function fetchAnnualType() {
+    const { data, error } = await supabase
+      .from("leave_types")
+      .select("id")
+      .eq("name", "Annual")
+      .maybeSingle();
+    if (!error && data) {
+      setAnnualType(data);
+    }
+  }
+  fetchAnnualType();
+}, []);
 useEffect(() => {
   if (!form.start_date || !form.end_date) {
     setForm(f => ({ ...f, return_date: "" }));
@@ -84,6 +96,13 @@ useEffect(() => {
     setSubmitting(true);
     setResult("");
 
+if (!annualType) {
+  setResult("❌ Yıllık izin türü henüz yüklenmedi, lütfen bekleyiniz.");
+  setSubmitting(false);
+  return;
+}
+
+  
   if (!form.start_date || !form.end_date) {
   setResult("❌ Lütfen tüm zorunlu alanları doldurun.");
   setSubmitting(false);
@@ -134,6 +153,7 @@ const response = await fetch("https://sxinuiwawpruwzxfcgpc.functions.supabase.co
     days,
     manager_email: dbUser.manager_email,
     email: dbUser.email,
+    leave_type_id: annualType?.id,
   }),
 });
 
@@ -150,12 +170,13 @@ if (!response.ok) {
 
     setSubmitting(false);
 
-    if (error) {
+    if (resultJson.error) {
       setResult("❌ " + error.message);
     } else {
       setResult("✅ İzin talebiniz gönderildi!");
+      
       // Logging
-      if (data && data[0]) {
+      /* if (data && data[0]) {
         await supabase.from("logs").insert([{
           user_id: dbUser.id,
           actor_email: dbUser.email,
@@ -166,7 +187,8 @@ if (!response.ok) {
           status_after: "Pending",
           details: { days, ...form }
         }]);
-      }
+      } */
+
       setForm({
         start_date: null,
         end_date: null,

@@ -13,11 +13,15 @@ const COLORS = {
   yellow: "#F0B357",
 };
 
+// Your deployed Edge Function URL for fetching profile photos
+const PROFILE_PHOTO_FN_URL = "https://sxinuiwawpruwzxfcgpc.supabase.co/functions/v1/get-profile-photo";
+
 export default function VacationBalanceCard({ userId, email, launchDate, title, showGreeting = true }) {
   const [balance, setBalance] = useState(null);
   const [user, setUser] = useState(null);
   const [resolvedUserId, setResolvedUserId] = useState(userId || null);
   const [loading, setLoading] = useState(true);
+  const [profilePhoto, setProfilePhoto] = useState(null);
 
   // Resolve userId if only email is provided
   useEffect(() => {
@@ -73,7 +77,7 @@ export default function VacationBalanceCard({ userId, email, launchDate, title, 
       if (!user) {
         const { data: usr } = await supabase
           .from('users')
-          .select('name')
+          .select('name, email')
           .eq('id', resolvedUserId)
           .maybeSingle();
         if (!cancelled) setUser(usr);
@@ -85,6 +89,33 @@ export default function VacationBalanceCard({ userId, email, launchDate, title, 
     // Only run when resolvedUserId changes
     // eslint-disable-next-line
   }, [resolvedUserId]);
+
+  // Fetch profile photo from Azure using Edge Function when email is available
+  useEffect(() => {
+    let cancelled = false;
+    // Use the direct email prop, or fallback to user?.email if found via userId
+    const userEmail = email || user?.email;
+    async function fetchPhoto() {
+      if (!userEmail) {
+        setProfilePhoto(null);
+        return;
+      }
+      try {
+        const res = await fetch(PROFILE_PHOTO_FN_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_email: userEmail })
+        });
+        const data = await res.json();
+        if (!cancelled && data.image) setProfilePhoto(data.image);
+        if (!cancelled && !data.image) setProfilePhoto(null);
+      } catch {
+        if (!cancelled) setProfilePhoto(null);
+      }
+    }
+    fetchPhoto();
+    return () => { cancelled = true; };
+  }, [email, user?.email]);
 
   if (loading)
     return (
@@ -100,38 +131,190 @@ export default function VacationBalanceCard({ userId, email, launchDate, title, 
       </div>
     );
 
-  return (
-    <div className="vacation-card">
-      <div className="vacation-card-header">
-        <div>
-          {showGreeting && (
-            <div className="vacation-greeting">
-              Merhaba{user?.name ? `, ${user.name}` : ""}!
+return (
+  <div
+    className="vacation-card"
+    style={{
+      padding: "28px 28px 18px 28px",
+      borderRadius: 18,
+      background: "#fff",
+      boxShadow: "0 2px 24px #cde5f422",
+      minWidth: 320,
+      maxWidth: 540,
+      margin: "0 auto",
+    }}
+  >
+    {/* Main header: photo + info + stats, horizontally aligned */}
+    <div
+      className="vacation-card-header"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 32,
+        minHeight: 92,
+        marginBottom: 8,
+      }}
+    >
+      {/* Profile Photo or fallback avatar */}
+      {profilePhoto ? (
+        <img
+          src={profilePhoto}
+          alt="Profil Fotoğrafı"
+          style={{
+            width: 80,
+            height: 80,
+            borderRadius: "50%",
+            objectFit: "cover",
+            boxShadow: "0 1px 8px #0002",
+            background: "#eee",
+            border: "1px solid #CDE5F4",
+            flexShrink: 0,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width: 80,
+            height: 80,
+            borderRadius: "50%",
+            background: "#E0653A33",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 38,
+            fontWeight: 800,
+            color: "#818285",
+            border: "3px solid #CDE5F4",
+            flexShrink: 0,
+          }}
+        >
+          {user?.name
+            ? user.name
+                .split(" ")
+                .map((w) => w[0]?.toUpperCase())
+                .join("")
+            : "?"}
+        </div>
+      )}
+
+      {/* Main info (greeting, label, stats) */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        {/* Greeting and label */}
+        {showGreeting && (
+          <div
+            className="vacation-greeting"
+            style={{
+              fontSize: 21,
+              fontWeight: 700,
+              color: "#F39200",
+              marginBottom: 2,
+              lineHeight: 1.2,
+            }}
+          >
+            Merhaba{user?.name ? `, ${user.name}` : ""}!
+          </div>
+        )}
+        <div
+          className="vacation-label"
+          style={{
+            fontSize: 17,
+            fontWeight: 600,
+            color: "#434344",
+            marginBottom: 10,
+          }}
+        >
+          {title ? title : "İzin Bakiyeniz"}
+        </div>
+        {/* Stats row */}
+        <div
+          className="vacation-stats-row"
+          style={{
+            display: "flex",
+            gap: 28,
+            alignItems: "flex-end",
+            marginTop: 0,
+          }}
+        >
+          <div className="vacation-stat" style={{ textAlign: "center" }}>
+            <div
+              className="vacation-stat-label"
+              style={{ fontSize: 15, color: "#818285", fontWeight: 600, marginBottom: 1 }}
+            >
+              Kazanılan
             </div>
-          )}
-          <div className="vacation-label">{title ? title : "İzin Bakiyeniz"}</div>
+            <div className="vacation-stat-value" style={{ fontSize: 22, fontWeight: 700 }}>
+              {balance.accrued ?? 0}{" "}
+              <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>gün</span>
+            </div>
+          </div>
+          <div className="vacation-stat" style={{ textAlign: "center" }}>
+            <div className="vacation-stat-label" style={{ fontSize: 15, color: "#818285", fontWeight: 600, marginBottom: 1 }}>
+              Kullanılan
+            </div>
+            <div className="vacation-stat-value" style={{ fontSize: 22, fontWeight: 700 }}>
+              {balance.used ?? 0}{" "}
+              <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>gün</span>
+            </div>
+          </div>
+          <div className="vacation-stat" style={{ textAlign: "center" }}>
+            <div className="vacation-remaining-label" style={{ fontSize: 15, color: "#F39200", fontWeight: 700, marginBottom: 1 }}>
+              Kalan
+            </div>
+            <div
+              className="vacation-remaining-value"
+              style={{
+                background: "#F39200",
+                color: "#fff",
+                borderRadius: 22,
+                padding: "10px 28px",
+                fontWeight: 800,
+                fontSize: 30,
+                minWidth: 90,
+                display: "inline-block",
+                marginTop: 2,
+                boxShadow: "0 2px 8px #F3920022",
+              }}
+            >
+              {balance.remaining ?? 0}{" "}
+              <span style={{ fontSize: "0.94rem", fontWeight: 700 }}>gün</span>
+            </div>
+          </div>
         </div>
-        <div className="vacation-stats-row">
-          <div className="vacation-stat">
-            <div className="vacation-stat-label">Kazanılan</div>
-            <div className="vacation-stat-value">{balance.accrued ?? 0} <span style={{ fontSize: '0.82rem', fontWeight: 500 }}>gün</span></div>
-          </div>
-          <div className="vacation-stat">
-            <div className="vacation-stat-label">Kullanılan</div>
-            <div className="vacation-stat-value">{balance.used ?? 0} <span style={{ fontSize: '0.82rem', fontWeight: 500 }}>gün</span></div>
-          </div>
-          <div className="vacation-stat">
-            <div className="vacation-remaining-label">Kalan</div>
-            <div className="vacation-remaining-value">{balance.remaining ?? 0} <span style={{ fontSize: '0.94rem', fontWeight: 700 }}>gün</span></div>
-          </div>
-        </div>
-      </div>
-      <div className="vacation-card-note">
-        <span className="vacation-card-note-icon">i</span>
-        <span>
-          Kazanılan ve kullanılan izinler <b>{launchDate}</b> tarihinden itibaren hesaplanmıştır.
-        </span>
       </div>
     </div>
-  );
+    {/* Info note */}
+    <div
+      className="vacation-card-note"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        marginTop: 8,
+        color: "#818285",
+        fontSize: 15,
+        background: "#F8FBFD",
+        borderRadius: 8,
+        padding: "7px 16px",
+        gap: 10,
+      }}
+    >
+      <span className="vacation-card-note-icon" style={{
+        display: "inline-block",
+        width: 20, height: 20,
+        background: "#A8D2F2",
+        color: "#434344",
+        borderRadius: "50%",
+        fontWeight: 700,
+        textAlign: "center",
+        fontSize: 16,
+        lineHeight: "20px",
+        marginRight: 6
+      }}>i</span>
+      <span>
+        Kazanılan ve kullanılan izinler <b>{launchDate}</b> tarihinden itibaren hesaplanmıştır.
+      </span>
+    </div>
+  </div>
+);
+
+
 }

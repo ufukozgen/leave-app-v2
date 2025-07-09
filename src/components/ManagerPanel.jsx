@@ -205,21 +205,25 @@ function statusDot(color, label, rowId) {
     setProcessing(null);
   }
 
-  function TabBtn({ active, children, onClick }) {
+  function TabBtn({ active, children, onClick, ...props }) {
     return (
       <button
+        {...props}
         onClick={onClick}
+        className="manager-tab-btn"
         style={{
-          background: active ? "#F39200" : "#CDE5F4",
+          background: active ? "#F0B357" : "#A8D2F2",   // alternate brand yellow for active, light blue for inactive
           color: active ? "#fff" : "#434344",
           fontWeight: 700,
           fontFamily: "Urbanist, Arial, sans-serif",
           fontSize: 18,
           border: "none",
           borderRadius: 10,
-          padding: "10px 22px",
-          marginRight: 10,
-          cursor: "pointer"
+          padding: "10px 10px",
+          boxShadow: active ? "0 2px 8px #F0B35744" : "none",
+          cursor: "pointer",
+          position: "relative",
+          outline: active ? "2px solid #F39200" : "none",
         }}
       >
         {children}
@@ -260,28 +264,35 @@ function statusDot(color, label, rowId) {
 
   // ---- Render ----
   return (
-    <SwitchTransition mode="out-in">
-                  <CSSTransition key={tab} nodeRef={nodeRef} timeout={200} classNames="tabfade" unmountOnExit>
-                    <div ref={nodeRef} className="main-content" style={{ minHeight: 580 }}>
-  
-        <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
-          <TabBtn active={tab === "pending"} onClick={() => setTab("pending")}>
-            Bekleyen ({pendingCount})
-          </TabBtn>
-          <TabBtn active={tab === "approved"} onClick={() => setTab("approved")}>
-            Onaylanan ({approvedCount})
-          </TabBtn>
-          <TabBtn active={tab === "deducted"} onClick={() => setTab("deducted")}>
-            Düşülen
-          </TabBtn>
-          <TabBtn active={tab === "rejected"} onClick={() => setTab("rejected")}>
-            Reddedilen
-          </TabBtn>
-          <TabBtn active={tab === "cancelled"} onClick={() => setTab("cancelled")}>
-            İptal Edilen
-          </TabBtn>
-        </div>
+<div className="main-content" style={{ minHeight: 580 }}>
+  {/* Centered tab bar, not animated */}
+  <div style={{
+    display: "flex",
+    justifyContent: "center",
+    gap: 12,
+    marginBottom: 18,
+  }}>
+    <TabBtn active={tab === "pending"} onClick={() => setTab("pending")}>
+      Bekleyen ({pendingCount})
+    </TabBtn>
+    <TabBtn active={tab === "approved"} onClick={() => setTab("approved")}>
+      Onaylanan ({approvedCount})
+    </TabBtn>
+    <TabBtn active={tab === "deducted"} onClick={() => setTab("deducted")}>
+      Düşülen
+    </TabBtn>
+    <TabBtn active={tab === "rejected"} onClick={() => setTab("rejected")}>
+      Reddedilen
+    </TabBtn>
+    <TabBtn active={tab === "cancelled"} onClick={() => setTab("cancelled")}>
+      İptal Edilen
+    </TabBtn>
+  </div>
 
+  {/* Only the body content below fades! */}
+  <SwitchTransition mode="out-in">
+    <CSSTransition key={tab} nodeRef={nodeRef} timeout={200} classNames="tabfade" unmountOnExit>
+      <div ref={nodeRef}>
         {message && (
           <div style={{
             background: "#CDE5F4",
@@ -298,261 +309,259 @@ function statusDot(color, label, rowId) {
         ) : requests.length === 0 ? (
           <div>Gösterilecek talep yok.</div>
         ) : (
-        
-            
-              
-                <table style={{
-                  width: "100%",
-                  fontSize: 15,
-                  borderSpacing: 0,
-                  tableLayout: "fixed",
-                  minWidth: 640,
-                  background: "#fff"
+          <table style={{
+            width: "100%",
+            fontSize: 15,
+            borderSpacing: 0,
+            tableLayout: "fixed",
+            minWidth: 640,
+            background: "#fff"
+          }}>
+            <thead>
+              <tr style={{ background: "#F39200", color: "#fff" }}>
+                <th style={{ ...th, width: 90 }}>Kullanıcı</th>
+                <th style={{ ...th, width: 76 }}>Başlangıç</th>
+                <th style={{ ...th, width: 76 }}>Bitiş</th>
+                <th style={{ ...th, width: 34, textAlign: "center" }}>Gün</th>
+                <th style={{ ...th, width: 68 }}>Lokasyon</th>
+                <th style={{ ...th, width: 68 }}>Not</th>
+                <th style={{ ...th, width: 38, textAlign: "center", whiteSpace: "nowrap", fontSize: 13 }}>Durum</th>
+                <th style={{ ...th, width: 44, textAlign: "center" }}>İşlem</th>
+              </tr>
+            </thead>
+            <tbody>
+              {requests.map(req => (
+                <tr key={req.id} style={{
+                  background: req.status === "Cancelled" ? "#f8f8f8" : "#fff",
+                  borderBottom: "1px solid #eee",
                 }}>
-                  <thead>
-                    <tr style={{ background: "#F39200", color: "#fff" }}>
-                      <th style={{ ...th, width: 90 }}>Kullanıcı</th>
-                      <th style={{ ...th, width: 76 }}>Başlangıç</th>
-                      <th style={{ ...th, width: 76 }}>Bitiş</th>
-                      <th style={{ ...th, width: 34, textAlign: "center" }}>Gün</th>
-                      <th style={{ ...th, width: 68 }}>Lokasyon</th>
-                      <th style={{ ...th, width: 68 }}>Not</th>
-                      <th style={{ ...th, width: 38, textAlign: "center", whiteSpace: "nowrap", fontSize: 13 }}>Durum</th>
-                      <th style={{ ...th, width: 44, textAlign: "center" }}>İşlem</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {requests.map(req => (
-                      <tr key={req.id} style={{
-                        background: req.status === "Cancelled" ? "#f8f8f8" : "#fff",
-                        borderBottom: "1px solid #eee",
-                      }}>
-                        <td style={{ ...td, whiteSpace: "nowrap" }}>
-                {trimEmail(req.email)}
-                        </td>
-                        <td style={{ ...td, whiteSpace: "nowrap" }}>{formatDateTR(req.start_date)}</td>
-                        <td style={{ ...td, whiteSpace: "nowrap" }}>{formatDateTR(req.end_date)}</td>
-                        <td style={{ ...td, textAlign: "center" }}>{req.days}</td>
-                        <td
-                style={{
-                  ...td,
-                  maxWidth: 80,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap"
-                }}
-                title={req.location}
-                        >
-                {ellipsis(req.location, 16)}
-                        </td>
-                        <td
-                style={{
-                  ...td,
-                  maxWidth: 80,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap"
-                }}
-                title={req.note}
-                        >
-                {ellipsis(req.note, 16)}
-                        </td>
-                        <td style={{ ...td, textAlign: "center", position: "relative" }}>
-                {statusDot(
-                  statusColors[req.status] || "#818285",
-                  statusLabelsTr[req.status] || req.status,
-                  req.id
-                )}
-                {activeTooltip === req.id && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: "50%",
-                      top: 18,
-                      transform: "translateX(-50%)",
-                      background: "#fff",
-                      color: "#434344",
-                      border: "1px solid #A8D2F2",
-                      borderRadius: 7,
-                      padding: "2px 10px",
-                      fontSize: 13,
-                      boxShadow: "0 2px 8px #CDE5F488",
-                      whiteSpace: "nowrap",
-                      zIndex: 5,
-                    }}
+                  <td style={{ ...td, whiteSpace: "nowrap" }}>
+                    {trimEmail(req.email)}
+                  </td>
+                  <td style={{ ...td, whiteSpace: "nowrap" }}>{formatDateTR(req.start_date)}</td>
+                  <td style={{ ...td, whiteSpace: "nowrap" }}>{formatDateTR(req.end_date)}</td>
+                  <td style={{ ...td, textAlign: "center" }}>{req.days}</td>
+                  <td style={{
+                    ...td,
+                    maxWidth: 80,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap"
+                  }}
+                    title={req.location}
                   >
-                    {statusLabelsTr[req.status] || req.status}
-                  </div>
-                )}
-                        </td>
-                        <td style={{ ...td, textAlign: "center", minWidth: 90, position: "relative", whiteSpace: "nowrap" }}>
-  {processing?.id === req.id ? (
-    <div
-      style={{
-        position: "relative",
-        display: "inline-block",
-        color: actionSymbolColor(processing.type), // function returning symbol color
-        fontWeight: 700,
-        fontSize: 14,
-        minWidth: 70, // Enough for the text without expanding too much
-        userSelect: "none",
-      }}
-      aria-live="polite"
-    >
-      <span
-        className="loading-spinner"
-        style={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          width: 20,
-          height: 20,
-          marginTop: -10,
-          marginLeft: -10,
-          opacity: 0.25, // Transparent spinner
-          zIndex: 0,
-        }}
-      />
-      <span style={{ position: "relative", zIndex: 1 }}>
-        {actionLabels[processing.type] || "İşlemde..."}
-      </span>
-    </div>
-  ) : (
-    <>
-      {tab === "pending" && (
-        <>
-          <button
-            onClick={() => handleApprove(req)}
-            disabled={!!processing}
-            style={{
-              ...actionBtn("#50B881"),
-              marginRight: 5,
-              width: 28,
-              height: 28,
-              padding: 0,
-              fontSize: 20,
-              borderRadius: "50%",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              userSelect: "none",
-            }}
-            title="Onayla"
-            aria-label="Onayla"
-          >
-            ✔
-          </button>
-          <button
-            onClick={() => handleReject(req)}
-            disabled={!!processing}
-            style={{
-              ...actionBtn("#E0653A"),
-              marginRight: 5,
-              width: 28,
-              height: 28,
-              padding: 0,
-              fontSize: 22,
-              borderRadius: "50%",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              userSelect: "none",
-            }}
-            title="Reddet"
-            aria-label="Reddet"
-          >
-            ×
-          </button>
-        </>
-      )}
-      {tab === "approved" && (
-        <>
-          <button
-            onClick={() => handleDeduct(req)}
-            disabled={!!processing}
-            style={{
-              ...actionBtn("#74B4DE"),
-              marginRight: 5,
-              width: 28,
-              height: 28,
-              padding: 0,
-              fontSize: 18,
-              borderRadius: "50%",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              userSelect: "none",
-            }}
-            title="Düş"
-            aria-label="Düş"
-          >
-            ↓
-          </button>
-          <button
-            onClick={() => handleReverse(req)}
-            disabled={!!processing}
-            style={{
-              ...actionBtn("#818285"),
-              width: 28,
-              height: 28,
-              padding: 0,
-              fontSize: 19,
-              borderRadius: "50%",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              userSelect: "none",
-            }}
-            title="Geri Al"
-            aria-label="Geri Al"
-          >
-            ↩
-          </button>
-        </>
-      )}
-      {tab === "deducted" && (
-        <button
-          onClick={() => handleReverse(req)}
-          disabled={!!processing}
-          style={{
-            ...actionBtn("#818285"),
-            width: 28,
-            height: 28,
-            padding: 0,
-            fontSize: 19,
-            borderRadius: "50%",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            userSelect: "none",
-          }}
-          title="Geri Al"
-          aria-label="Geri Al"
-        >
-          ↩
-        </button>
-      )}
-    </>
-  )}
-</td>
-
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              
-            
-          
-
+                    {ellipsis(req.location, 16)}
+                  </td>
+                  <td style={{
+                    ...td,
+                    maxWidth: 80,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap"
+                  }}
+                    title={req.note}
+                  >
+                    {ellipsis(req.note, 16)}
+                  </td>
+                  <td style={{ ...td, textAlign: "center", position: "relative" }}>
+                    {statusDot(
+                      statusColors[req.status] || "#818285",
+                      statusLabelsTr[req.status] || req.status,
+                      req.id
+                    )}
+                    {activeTooltip === req.id && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: "50%",
+                          top: 18,
+                          transform: "translateX(-50%)",
+                          background: "#fff",
+                          color: "#434344",
+                          border: "1px solid #A8D2F2",
+                          borderRadius: 7,
+                          padding: "2px 10px",
+                          fontSize: 13,
+                          boxShadow: "0 2px 8px #CDE5F488",
+                          whiteSpace: "nowrap",
+                          zIndex: 5,
+                        }}
+                      >
+                        {statusLabelsTr[req.status] || req.status}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{
+                    ...td,
+                    textAlign: "center",
+                    minWidth: 90,
+                    position: "relative",
+                    whiteSpace: "nowrap"
+                  }}>
+                    {processing?.id === req.id ? (
+                      <div
+                        style={{
+                          position: "relative",
+                          display: "inline-block",
+                          color: actionSymbolColor(processing.type),
+                          fontWeight: 700,
+                          fontSize: 14,
+                          minWidth: 70,
+                          userSelect: "none",
+                        }}
+                        aria-live="polite"
+                      >
+                        <span
+                          className="loading-spinner"
+                          style={{
+                            position: "absolute",
+                            top: "50%",
+                            left: "50%",
+                            width: 20,
+                            height: 20,
+                            marginTop: -10,
+                            marginLeft: -10,
+                            opacity: 0.25,
+                            zIndex: 0,
+                          }}
+                        />
+                        <span style={{ position: "relative", zIndex: 1 }}>
+                          {actionLabels[processing.type] || "İşlemde..."}
+                        </span>
+                      </div>
+                    ) : (
+                      <>
+                        {tab === "pending" && (
+                          <>
+                            <button
+                              onClick={() => handleApprove(req)}
+                              disabled={!!processing}
+                              style={{
+                                ...actionBtn("#50B881"),
+                                marginRight: 5,
+                                width: 28,
+                                height: 28,
+                                padding: 0,
+                                fontSize: 20,
+                                borderRadius: "50%",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                cursor: "pointer",
+                                userSelect: "none",
+                              }}
+                              title="Onayla"
+                              aria-label="Onayla"
+                            >
+                              ✔
+                            </button>
+                            <button
+                              onClick={() => handleReject(req)}
+                              disabled={!!processing}
+                              style={{
+                                ...actionBtn("#E0653A"),
+                                marginRight: 5,
+                                width: 28,
+                                height: 28,
+                                padding: 0,
+                                fontSize: 22,
+                                borderRadius: "50%",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                cursor: "pointer",
+                                userSelect: "none",
+                              }}
+                              title="Reddet"
+                              aria-label="Reddet"
+                            >
+                              ×
+                            </button>
+                          </>
+                        )}
+                        {tab === "approved" && (
+                          <>
+                            <button
+                              onClick={() => handleDeduct(req)}
+                              disabled={!!processing}
+                              style={{
+                                ...actionBtn("#74B4DE"),
+                                marginRight: 5,
+                                width: 28,
+                                height: 28,
+                                padding: 0,
+                                fontSize: 18,
+                                borderRadius: "50%",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                cursor: "pointer",
+                                userSelect: "none",
+                              }}
+                              title="Düş"
+                              aria-label="Düş"
+                            >
+                              ↓
+                            </button>
+                            <button
+                              onClick={() => handleReverse(req)}
+                              disabled={!!processing}
+                              style={{
+                                ...actionBtn("#818285"),
+                                width: 28,
+                                height: 28,
+                                padding: 0,
+                                fontSize: 19,
+                                borderRadius: "50%",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                cursor: "pointer",
+                                userSelect: "none",
+                              }}
+                              title="Geri Al"
+                              aria-label="Geri Al"
+                            >
+                              ↩
+                            </button>
+                          </>
+                        )}
+                        {tab === "deducted" && (
+                          <button
+                            onClick={() => handleReverse(req)}
+                            disabled={!!processing}
+                            style={{
+                              ...actionBtn("#818285"),
+                              width: 28,
+                              height: 28,
+                              padding: 0,
+                              fontSize: 19,
+                              borderRadius: "50%",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              userSelect: "none",
+                            }}
+                            title="Geri Al"
+                            aria-label="Geri Al"
+                          >
+                            ↩
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
-                  </CSSTransition>
-                </SwitchTransition>
+    </CSSTransition>
+  </SwitchTransition>
+</div>
+
     
   );
 }

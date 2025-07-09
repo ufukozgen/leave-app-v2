@@ -2,6 +2,27 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { useUser } from "./UserContext";
 
+const EDGE_FUNCTION_URL = "https://sxinuiwawpruwzxfcgpc.supabase.co/functions/v1/update-leave-balance";
+
+
+function formatDateTR(dateStr) {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  if (isNaN(date)) return "";
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+
+
+function balanceMismatch(accrued, used, remaining) {
+  if ([accrued, used, remaining].some(v => isNaN(v) || v === "")) return false;
+  return Number(accrued) !== Number(used) + Number(remaining);
+}
+
+
 export default function AdminPanel() {
   const { dbUser, loading } = useUser();
   const [users, setUsers] = useState([]);
@@ -9,13 +30,28 @@ export default function AdminPanel() {
   const [balances, setBalances] = useState([]);
   const [editing, setEditing] = useState({});
   const [message, setMessage] = useState("");
+  const [savingUserId, setSavingUserId] = useState(null);
+  const [confirmingUser, setConfirmingUser] = useState(null);
+  const [adminNote, setAdminNote] = useState("");
+  const [holidays, setHolidays] = useState([]);
+  const [newHolidayDate, setNewHolidayDate] = useState("");
+  const [newHolidayName, setNewHolidayName] = useState("");
+  const [addingHoliday, setAddingHoliday] = useState(false);
+  const [deletingHolidayId, setDeletingHolidayId] = useState(null);
+  const [loadingAnnualType, setLoadingAnnualType] = useState(true);
 
-  // Kullanıcıları ve Yıllık izin tipini yükle
+
+
+  // Load data
   useEffect(() => {
     async function fetchAll() {
       const { data: usersData } = await supabase.from("users").select("id, name, email");
       setUsers(usersData || []);
-      const { data: typeData } = await supabase.from("leave_types").select("*").eq("name", "Annual").maybeSingle();
+      const { data: typeData } = await supabase
+        .from("leave_types")
+        .select("*")
+        .eq("name", "Annual")
+        .maybeSingle();
       setAnnualType(typeData);
       if (typeData) {
         const { data: balData } = await supabase
@@ -24,92 +60,22 @@ export default function AdminPanel() {
           .eq("leave_type_id", typeData.id);
         setBalances(balData || []);
       }
+      // Holidays
+      const { data: holData } = await supabase
+        .from("holidays")
+        .select("*")
+        .order("date");
+      setHolidays(holData || []);
+      setLoadingAnnualType(false);
     }
     fetchAll();
   }, []);
 
   function onEdit(user_id, field, value) {
-    setEditing({
-      ...editing,
+    setEditing((prev) => ({
+      ...prev,
       [`${user_id}_${field}`]: value,
-    });
-  }
-
-  async function onSave(user) {
-    setMessage("");
-    if (!annualType) return;
-    const key = (field) => `${user.id}_${field}`;
-    const accrued = parseFloat(editing[key("accrued")]);
-    const used = parseFloat(editing[key("used")]);
-    const remaining = parseFloat(editing[key("remaining")]);
-    let bal = balances.find(b => b.user_id === user.id && b.leave_type_id === annualType.id);
-
-    if (!bal) {
-      const { data, error } = await supabase.from("leave_balances").insert([{
-        user_id: user.id,
-        leave_type_id: annualType.id,
-        accrued: accrued || 0,
-        used: used || 0,
-        remaining: remaining || 0,
-        last_updated: new Date().toISOString(),
-      }]).select();
-      if (error) {
-        setMessage("Bakiyeyi oluştururken hata: " + error.message);
-        return;
-      }
-      bal = data && data[0];
-      setBalances(bs => [...bs, bal]);
-    } else {
-      const { error } = await supabase.from("leave_balances").update({
-        accrued: !isNaN(accrued) ? accrued : bal.accrued,
-        used: !isNaN(used) ? used : bal.used,
-        remaining: !isNaN(remaining) ? remaining : bal.remaining,
-        last_updated: new Date().toISOString(),
-      }).eq("id", bal.id);
-      if (error) {
-        setMessage("Bakiyeyi güncellerken hata: " + error.message);
-        return;
-      }
-      setBalances(bs =>
-        bs.map(row =>
-          row.id === bal.id
-            ? {
-                ...row,
-                accrued: !isNaN(accrued) ? accrued : bal.accrued,
-                used: !isNaN(used) ? used : bal.used,
-                remaining: !isNaN(remaining) ? remaining : bal.remaining,
-                last_updated: new Date().toISOString(),
-              }
-            : row
-        )
-      );
-    }
-
-    // Log kaydı
-    await supabase.from("logs").insert([{
-      user_id: dbUser.id,
-      actor_email: dbUser.email,
-      action: bal ? "admin_update_balance" : "admin_create_balance",
-      target_table: "leave_balances",
-      target_id: bal ? bal.id : null,
-      status_before: bal
-        ? JSON.stringify({
-            accrued: bal.accrued,
-            used: bal.used,
-            remaining: bal.remaining,
-          })
-        : null,
-      status_after: JSON.stringify({
-        accrued,
-        used,
-        remaining,
-      }),
-      details: {
-        user_email: user.email,
-        leave_type: "Annual",
-      }
-    }]);
-    setMessage("Kaydedildi!");
+    }));
   }
 
   function getBal(user_id) {
@@ -117,8 +83,130 @@ export default function AdminPanel() {
     return balances.find(b => b.user_id === user_id && b.leave_type_id === annualType.id) || {};
   }
 
-  if (loading) return <div style={{ fontFamily: "Urbanist" }}>Yükleniyor…</div>;
-  if (!annualType) return <div style={{ fontFamily: "Urbanist" }}>'Yıllık' izin tipi tanımlı değil.</div>;
+  function onSaveClick(user) {
+    setConfirmingUser(user);
+    setAdminNote("");
+    setMessage("");
+  }
+
+  // The main difference is here: use getSession for access token
+  async function onConfirmSave() {
+    if (!confirmingUser) return;
+    setConfirmingUser(null);
+    setAdminNote("");
+    setSavingUserId(confirmingUser.id);
+    setMessage("");
+    const bal = getBal(confirmingUser?.id);
+    const key = (field) => `${confirmingUser.id}_${field}`;
+const parseOrZero = val => isNaN(Number(val)) || val === "" ? 0 : Number(val);
+const accrued = parseOrZero(editing[key("accrued")] ?? bal.accrued ?? "");
+const used = parseOrZero(editing[key("used")] ?? bal.used ?? "");
+const remaining = parseOrZero(editing[key("remaining")] ?? bal.remaining ?? "");
+
+    let token = "";
+    try {
+      const { data } = await supabase.auth.getSession();
+      token = data?.session?.access_token;
+    } catch {}
+    if (!token) {
+      setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
+      setSavingUserId(null);
+      setConfirmingUser(null);
+      setAdminNote("");
+      return;
+    }
+
+    try {
+      const res = await fetch(EDGE_FUNCTION_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          user_id: confirmingUser.id,
+          accrued,
+          used,
+          remaining,
+          admin_email: dbUser.email,
+          admin_name: dbUser.name,
+          note: adminNote,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setMessage(data.error || "Kaydetme işlemi başarısız oldu.");
+      } else {
+        setBalances((prev) => {
+          let found = false;
+          const updated = prev.map(bal => {
+            if (bal.user_id === confirmingUser.id && bal.leave_type_id === annualType.id) {
+              found = true;
+              return {
+                ...bal,
+                accrued,
+                used,
+                remaining,
+                last_updated: new Date().toISOString(),
+              };
+            }
+            return bal;
+          });
+          if (!found) {
+            updated.push({
+              user_id: confirmingUser.id,
+              leave_type_id: annualType.id,
+              accrued,
+              used,
+              remaining,
+              last_updated: new Date().toISOString(),
+            });
+          }
+          return updated;
+        });
+        setMessage("Kaydedildi ve bildirim gönderildi.");
+      }
+    } catch (err) {
+      setMessage("Kaydetme sırasında hata oluştu.");
+    }
+    setSavingUserId(null);
+  }
+
+  function onCancelConfirm() {
+    setConfirmingUser(null);
+    setAdminNote("");
+  }
+
+  // Holiday CRUD
+  async function handleAddHoliday(e) {
+    e.preventDefault();
+    setAddingHoliday(true);
+    const { data, error } = await supabase.from("holidays").insert([
+      { date: newHolidayDate, name: newHolidayName }
+    ]).select();
+    if (!error && data && data[0]) {
+      setHolidays([...holidays, data[0]]);
+      setNewHolidayDate("");
+      setNewHolidayName("");
+    }
+    setAddingHoliday(false);
+  }
+
+  async function onDeleteHoliday(h) {
+    if (!window.confirm("Silmek istediğinize emin misiniz?")) return;
+    setDeletingHolidayId(h.id);
+    await supabase.from("holidays").delete().eq("id", h.id);
+    setHolidays(holidays.filter(hol => hol.id !== h.id));
+    setDeletingHolidayId(null);
+  }
+
+  if (loading || typeof annualType === "undefined" || !dbUser) {
+  return <div style={{ fontFamily: "Urbanist" }}>Yükleniyor…</div>;
+}
+if (!annualType) {
+  return <div style={{ fontFamily: "Urbanist" }}>'Yıllık' izin tipi tanımlı değil.</div>;
+}
+
 
   return (
     <div
@@ -135,7 +223,7 @@ export default function AdminPanel() {
       <h2 style={{ fontWeight: 700, marginBottom: 24, color: "#434344" }}>Yıllık İzin Bakiyeleri (Yönetici)</h2>
       {message && (
         <div style={{
-          color: message.startsWith("Bakiyeyi") ? "#E0653A" : "#468847",
+          color: message.startsWith("Kaydetme") || message.startsWith("Bakiyeyi") ? "#E0653A" : "#468847",
           fontWeight: 700,
           marginBottom: 18
         }}>
@@ -155,61 +243,262 @@ export default function AdminPanel() {
         </thead>
         <tbody>
           {users.map(user => {
-            const bal = getBal(user.id);
-            const key = (field) => `${user.id}_${field}`;
-            return (
-              <tr key={user.id}>
-                <td style={td}>{user.name || user.email}</td>
-                <td style={td}>{user.email}</td>
-                <td style={td}>
-                  <input
-                    type="number"
-                    value={editing[key("accrued")] ?? bal.accrued ?? ""}
-                    onChange={e => onEdit(user.id, "accrued", e.target.value)}
-                    style={inputStyle}
-                  />
-                </td>
-                <td style={td}>
-                  <input
-                    type="number"
-                    value={editing[key("used")] ?? bal.used ?? ""}
-                    onChange={e => onEdit(user.id, "used", e.target.value)}
-                    style={inputStyle}
-                  />
-                </td>
-                <td style={td}>
-                  <input
-                    type="number"
-                    value={editing[key("remaining")] ?? bal.remaining ?? ""}
-                    onChange={e => onEdit(user.id, "remaining", e.target.value)}
-                    style={inputStyle}
-                  />
-                </td>
-                <td style={td}>
-                  <button
-                    style={{
-                      background: "#F39200",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: 7,
-                      padding: "5px 12px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                    onClick={() => onSave(user)}
-                  >
-                    Kaydet
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
+  const bal = getBal(user.id);
+  const key = (field) => `${user.id}_${field}`;
+  const accrued = editing[key("accrued")] ?? bal.accrued ?? "";
+  const used = editing[key("used")] ?? bal.used ?? "";
+  const remaining = editing[key("remaining")] ?? bal.remaining ?? "";
+
+  const showWarning = balanceMismatch(accrued, used, remaining);
+
+  return (
+    <React.Fragment key={user.id}>
+      <tr>
+        <td style={td}>{user.name || user.email}</td>
+        <td style={td}>{user.email}</td>
+        <td style={td}>
+          <input
+            type="number"
+            value={accrued}
+            onChange={e => onEdit(user.id, "accrued", e.target.value)}
+            style={inputStyle}
+          />
+        </td>
+        <td style={td}>
+          <input
+            type="number"
+            value={used}
+            onChange={e => onEdit(user.id, "used", e.target.value)}
+            style={inputStyle}
+          />
+        </td>
+        <td style={td}>
+          <input
+            type="number"
+            value={remaining}
+            onChange={e => onEdit(user.id, "remaining", e.target.value)}
+            style={inputStyle}
+          />
+        </td>
+        <td style={td}>
+          <button
+            style={{
+              background: "#F39200",
+              color: "#fff",
+              border: "none",
+              borderRadius: 7,
+              padding: "5px 12px",
+              fontWeight: 600,
+              cursor:
+                savingUserId === user.id || showWarning
+                  ? "not-allowed"
+                  : "pointer",
+              minWidth: 90,
+              position: "relative"
+            }}
+            disabled={savingUserId === user.id || showWarning}
+            onClick={() => onSaveClick(user)}
+          >
+            {savingUserId === user.id ? (
+              <>
+                <span
+                  className="spinner"
+                  style={{
+                    width: 16,
+                    height: 16,
+                    border: "2px solid #fff",
+                    borderTop: "2px solid #F0B357",
+                    borderRadius: "50%",
+                    display: "inline-block",
+                    marginRight: 6,
+                    animation: "spin 1s linear infinite",
+                    verticalAlign: "middle"
+                  }}
+                />
+                Kaydediliyor…
+              </>
+            ) : "Kaydet"}
+          </button>
+        </td>
+      </tr>
+      {showWarning && (
+        <tr>
+          <td colSpan={6} style={{
+            color: "#E0653A",
+            background: "#fff7f2",
+            borderRadius: 8,
+            fontWeight: 600,
+            fontSize: 15,
+            padding: "7px 16px",
+            textAlign: "left"
+          }}>
+            ⚠️ Uyarı: Kullanılan + Kalan toplamı Kazandırılan'a eşit değil!
+          </td>
+        </tr>
+      )}
+    </React.Fragment>
+  );
+})}
+
         </tbody>
       </table>
+
+      {/* Confirmation Modal/Dialog */}
+      {confirmingUser && (
+        <div
+          style={{
+            position: "fixed", left: 0, top: 0, width: "100vw", height: "100vh",
+            background: "rgba(33,47,62,0.22)", zIndex: 999,
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 12,
+              padding: "32px 28px",
+              boxShadow: "0 4px 28px #a8d2f285",
+              minWidth: 360
+            }}
+          >
+            <h3 style={{ color: "#F39200", marginBottom: 8, fontWeight: 700, fontSize: 22 }}>Kaydı Onayla</h3>
+            <div style={{ marginBottom: 16, color: "#434344", fontWeight: 500 }}>
+              <div>
+                <b>{confirmingUser.name || confirmingUser.email}</b> kullanıcısının bakiyesi güncellenecek.
+              </div>
+              <div style={{ fontSize: 15, margin: "10px 0 2px 0" }}>
+                Bu işlem çalışana ve yöneticisine e-posta bildirimi gönderir.
+              </div>
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <label htmlFor="admin-note" style={{ fontSize: 15, fontWeight: 500 }}>Açıklama (gönderilecek e-postada gösterilecek):</label>
+              <textarea
+                id="admin-note"
+                value={adminNote}
+                onChange={e => setAdminNote(e.target.value)}
+                placeholder="İsteğe bağlı açıklama girin"
+                style={{
+                  width: "100%",
+                  fontFamily: "Urbanist, Arial, sans-serif",
+                  borderRadius: 7,
+                  border: "1px solid #CDE5F4",
+                  padding: "8px",
+                  minHeight: 38,
+                  marginTop: 4,
+                  fontSize: 15,
+                }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                style={{
+                  background: "#E0653A",
+                  color: "#fff",
+                  fontWeight: 600,
+                  border: "none",
+                  borderRadius: 7,
+                  padding: "7px 22px",
+                  fontSize: 17,
+                  cursor: "pointer"
+                }}
+                onClick={onCancelConfirm}
+              >İptal</button>
+              <button
+                style={{
+                  background: "#F39200",
+                  color: "#fff",
+                  fontWeight: 700,
+                  border: "none",
+                  borderRadius: 7,
+                  padding: "7px 22px",
+                  fontSize: 17,
+                  cursor: "pointer"
+                }}
+                onClick={onConfirmSave}
+              >Onayla ve Kaydet</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HOLIDAY MANAGEMENT */}
+      <h2 style={{ color: "#F39200", marginTop: 42, marginBottom: 10, fontWeight: 700 }}>
+        Resmi Tatil Yönetimi
+      </h2>
+      <form onSubmit={handleAddHoliday} style={{ marginBottom: 18, display: "flex", gap: 8 }}>
+        <input
+          type="date"
+          required
+          value={newHolidayDate}
+          onChange={e => setNewHolidayDate(e.target.value)}
+          style={{ fontSize: 15, padding: 5, borderRadius: 6, border: "1px solid #CDE5F4" }}
+        />
+        <input
+          type="text"
+          required
+          placeholder="Tatil Adı"
+          value={newHolidayName}
+          onChange={e => setNewHolidayName(e.target.value)}
+          style={{ fontSize: 15, padding: 5, borderRadius: 6, border: "1px solid #CDE5F4" }}
+        />
+        <button type="submit" disabled={addingHoliday} style={{
+          background: "#F39200",
+          color: "#fff",
+          border: "none",
+          borderRadius: 7,
+          padding: "5px 18px",
+          fontWeight: 600,
+          cursor: addingHoliday ? "not-allowed" : "pointer"
+        }}>
+          {addingHoliday ? "Ekleniyor…" : "Ekle"}
+        </button>
+      </form>
+
+      <table style={{ width: "100%", background: "#F8FBFD", borderRadius: 10, fontSize: 16 }}>
+        <thead>
+          <tr>
+            <th style={{ padding: 10 }}>Tarih</th>
+            <th>Adı</th>
+            <th style={{ width: 60 }}>İşlem</th>
+          </tr>
+        </thead>
+        <tbody>
+          {holidays.map((h, i) => (
+            <tr key={h.id || i}>
+              <td>{formatDateTR(h.date)}</td>
+              <td>{h.name}</td>
+              <td>
+                <button
+                  onClick={() => onDeleteHoliday(h)}
+                  disabled={deletingHolidayId === h.id}
+                  title="Sil"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    fontSize: 20,
+                    cursor: deletingHolidayId === h.id ? "not-allowed" : "pointer"
+                  }}>
+                  {deletingHolidayId === h.id ? "…" : "🗑"}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Spinner CSS in the component for completeness */}
+      <style>
+        {`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        `}
+      </style>
     </div>
   );
 }
 
+// --- Styles ---
 const th = {
   padding: "8px 10px",
   fontWeight: 700,

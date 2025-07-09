@@ -58,7 +58,7 @@ export default function App() {
       style={{
         minHeight: 800, // Increased for consistency
         maxWidth: 1040,
-        width: "100%",
+        width: 1040,
         margin: "32px auto",
         padding: "0 0 36px 0",
         background: "#fff",
@@ -88,9 +88,12 @@ export default function App() {
 
       <nav style={{
         display: "flex",
-        gap: 8,
-        padding: "20px 32px 0 32px",
-        marginBottom: 16
+    justifyContent: "center",  // <-- center the tab buttons horizontally
+    alignItems: "center",
+    gap: 18,                   // slightly more gap for visual comfort
+    padding: "20px 0 0 0",     // remove horizontal padding so centering is exact
+    marginBottom: 16,
+    width: "100%",             // optional, flex will fill parent
       }}>
         <TabButton active={tab === "request"} onClick={() => setTab("request")}>İzin Talebi</TabButton>
         <TabButton active={tab === "list"} onClick={() => setTab("list")}>İzin Taleplerim</TabButton>
@@ -165,6 +168,7 @@ function TabButton({ active, children, badge, ...props }) {
   return (
     <button
       {...props}
+      className={"tab-btn" + (props.className ? " " + props.className : "")}
       style={{
         background: active ? "#F39200" : "#CDE5F4",
         color: active ? "#fff" : "#434344",

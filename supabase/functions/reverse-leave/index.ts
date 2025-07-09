@@ -1,9 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.0.0";
-import { sendGraphEmail } from "./SendGraphEmail.ts"; // Adjust this path if needed
+import { sendGraphEmail } from "../helpers/sendGraphEmail.ts";
+import { cancelCalendarEvent } from "../helpers/cancelCalendarEvent.ts";
+
+const sharedCalendarEmail = Deno.env.get("SHARED_CALENDAR_EMAIL");
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*", // Set to your production domain in prod!
+  "Access-Control-Allow-Origin": "https://leave-app-v2.vercel.app",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
@@ -14,7 +17,6 @@ serve(async (req) => {
 
   try {
     const { request_id } = await req.json();
-
     const authHeader = req.headers.get("authorization") || "";
     const jwt = authHeader.replace("Bearer ", "");
 
@@ -31,9 +33,10 @@ serve(async (req) => {
       });
     }
 
+    // Select all needed fields
     const { data: leave, error: leaveError } = await supabase
       .from("leave_requests")
-      .select("id, user_id, leave_type_id, days, status, manager_email")
+      .select("id, user_id, leave_type_id, days, status, manager_email, start_date, end_date, calendar_event_id")
       .eq("id", request_id)
       .maybeSingle();
 
@@ -73,7 +76,7 @@ serve(async (req) => {
       });
     }
 
-    // What will the new status be?
+    // New status and balance logic
     let newStatus = "";
     let doBalanceUpdate = false;
     if (leave.status === "Deducted") {
@@ -86,7 +89,6 @@ serve(async (req) => {
 
     // If reverting a deduction, also restore balance!
     if (doBalanceUpdate) {
-      // Get leave balance
       const { data: balance, error: balanceError } = await supabase
         .from("leave_balances")
         .select("id, used, remaining")
@@ -121,6 +123,18 @@ serve(async (req) => {
       }
     }
 
+    // If reverting Approved → Pending, remove calendar event if exists
+    if (leave.status === "Approved" && leave.calendar_event_id) {
+      try {
+        await cancelCalendarEvent({
+          sharedCalendarEmail,
+          eventId: leave.calendar_event_id
+        });
+      } catch (calendarError) {
+        console.error("Calendar event cancellation failed (reverse-leave):", calendarError);
+      }
+    }
+
     // Update leave status
     const { error: updateLeaveError } = await supabase
       .from("leave_requests")
@@ -134,40 +148,52 @@ serve(async (req) => {
       });
     }
 
-    // Get the email address of the leave owner (employee)
+    // Log the action
+    try {
+      await supabase.from("logs").insert([{
+        user_id: user.id,
+        actor_email: user.email,
+        action: leave.status === "Deducted" ? "revert_deducted_request" : "revert_approved_request",
+        target_table: "leave_requests",
+        target_id: leave.id,
+        status_before: leave.status,
+        status_after: newStatus,
+        details: {
+          start_date: leave.start_date,
+          end_date: leave.end_date,
+          days: leave.days,
+        },
+      }]);
+    } catch (logError) {
+      console.error("Logging failed in reverse-leave:", logError);
+    }
+
+    // Notify leave owner by email
     const { data: ownerUser } = await supabase
       .from("users")
       .select("email")
       .eq("id", leave.user_id)
       .maybeSingle();
 
-    // Compose e-mail
     if (ownerUser?.email) {
       let statusMessage = "";
       if (newStatus === "Approved") {
-        statusMessage = "İzin bakiyeniz güncellendi. İzniniz tekrar ONAYLANDI ve kesinti geri alındı.";
+        statusMessage = "İzin bakiyeniz güncellendi. İzniniz tekrar <b>ONAYLANDI</b> ve kesinti geri alındı.";
       } else if (newStatus === "Pending") {
-        statusMessage = "İzniniz tekrar BEKLEMEDE. Onay geri alındı ve henüz onaylanmadı.";
+        statusMessage = "İzniniz tekrar <b>BEKLEMEDE</b>. Onay geri alındı ve henüz onaylanmadı.";
       } else {
         statusMessage = "İzin durumunuzda değişiklik yapıldı.";
       }
 
       const emailSubject = "İzin Talebinizde Güncelleme";
-      const emailBody = [
-  "Sayın çalışan,",
-  "",
-  `${leave.days} gün olarak talep ettiğiniz izninizde bir güncelleme yapıldı.`,
-  "",
-  statusMessage,
-  "",
-  "Daha fazla bilgi için lütfen yöneticinizle iletişime geçiniz.",
-  "",
-  "İyi çalışmalar."
-].join("\n");
+      const emailBody = `
+        <p>Sayın çalışan,</p>
+        <p>${leave.days} gün olarak talep ettiğiniz izninizde bir güncelleme yapıldı.</p>
+        <p>${statusMessage}</p>
+        <p>Daha fazla bilgi için lütfen yöneticinizle iletişime geçiniz.</p>
+        <p>İyi çalışmalar.</p>
+      `;
 
-
-
-      // Send the email (do not block on await, but safe to do so in Deno)
       await sendGraphEmail({
         to: ownerUser.email,
         subject: emailSubject,

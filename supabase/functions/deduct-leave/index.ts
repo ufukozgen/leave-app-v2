@@ -2,10 +2,10 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.0.0";
-import { sendGraphEmail } from "./sendGraphEmail.ts"; // Adjust the path if needed
+import { sendGraphEmail } from "../helpers/sendGraphEmail.ts"; // Adjust the path if needed
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*", // Set to your production domain in prod!
+  "Access-Control-Allow-Origin": "https://leave-app-v2.vercel.app",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
@@ -122,6 +122,33 @@ serve(async (req) => {
         status: 500, headers: corsHeaders
       });
     }
+
+    try {
+  await supabase.from("logs").insert([
+    {
+      user_id: user.id,              // the actor's user ID from JWT
+      actor_email: user.email,       // actor's email
+      action: "deduct_request",         // e.g. "approve_request"
+      target_table: "leave_requests",
+      target_id: leave.id,
+      status_before: leave.status,
+      status_after: "Deducted",      // new leave status string
+      details: {
+        start_date: leave.start_date,
+        end_date: leave.end_date,
+        days: leave.days,
+        location: leave.location,
+        note: leave.note,
+        
+        // add any other useful info
+      }
+    }
+  ]);
+
+  } catch (logError) {
+  console.error("Failed to log action:", logError);
+  // Optional: handle logging failure gracefully without blocking main flow
+}
 
     // Fetch employee (for e-mail)
     const { data: employee } = await supabase

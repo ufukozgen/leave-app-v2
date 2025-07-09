@@ -196,7 +196,7 @@ button:focus-visible {
 }
 
 .main-content {
-  max-width: 650px;
+  max-width: 900px;
   margin: 0 auto 40px auto;
   background: #fff;
   border-radius: 22px;
@@ -288,4 +288,18 @@ button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px #F39200; /* orange glow to match brand */
   border-radius: 50%;
+}
+.tab-btn {
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
+  height: 100px;
+  /* padding, font, etc */
+}
+.manager-tab-btn {
+  width: 150px;        /* Or try 140-160px for best fit */
+  min-width: 150px;
+  max-width: 150px;
+  text-align: center;
+  transition: background 0.18s, color 0.18s;
 }

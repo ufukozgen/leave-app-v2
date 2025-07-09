@@ -24,27 +24,29 @@ export default function App() {
   const isAdmin = dbUser?.role === "admin";
   const nodeRef = useRef(null);
 
-  useEffect(() => {
-    if (!isManager || !dbUser?.email) return;
-    async function fetchCounts() {
-      const { count: pending } = await supabase
-        .from("leave_requests")
-        .select("id", { count: "exact", head: true })
-        .eq("manager_email", dbUser.email)
-        .eq("status", "Pending");
-      setPendingCount(pending || 0);
+  const fetchCounts = async () => {
+  if (!isManager || !dbUser?.email) return;
+  const { count: pending } = await supabase
+    .from("leave_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("manager_email", dbUser.email)
+    .eq("status", "Pending");
+  setPendingCount(pending || 0);
 
-      const { count: approved } = await supabase
-        .from("leave_requests")
-        .select("id", { count: "exact", head: true })
-        .eq("manager_email", dbUser.email)
-        .eq("status", "Approved");
-      setApprovedCount(approved || 0);
-    }
-    fetchCounts();
-  }, [dbUser, isManager, tab]);
+  const { count: approved } = await supabase
+    .from("leave_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("manager_email", dbUser.email)
+    .eq("status", "Approved");
+  setApprovedCount(approved || 0);
+};
 
-  const managerTotal = pendingCount + approvedCount;
+// 2. Call it in useEffect as before:
+useEffect(() => {
+  fetchCounts();
+}, [dbUser, isManager, tab]);
+
+const managerTotal = pendingCount + approvedCount;
 
   // --- LOGGED OUT LANDING ---
   if (!isLoggedIn) {
@@ -261,6 +263,7 @@ export default function App() {
                 <ManagerPanel
                   pendingCount={pendingCount}
                   approvedCount={approvedCount}
+                  refreshCounts={fetchCounts}
                 />
               )}
               {tab === "employee-console" && isManager && (

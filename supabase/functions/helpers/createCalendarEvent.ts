@@ -35,7 +35,6 @@ export async function createCalendarEvent({
       content: `
         Leave approved for ${employeeName}<br>
         Dates: ${leave.start_date} to ${leave.end_date}<br>
-        Note: ${leave.note || "-"}
       `
     },
     start: { dateTime: leave.start_date + "T09:00:00", timeZone: "Europe/Istanbul" },

@@ -71,7 +71,7 @@ const tabStatus = {
   cancelled: "Cancelled"
 };
 
-export default function ManagerPanel({ pendingCount, approvedCount }) {
+export default function ManagerPanel({ pendingCount, approvedCount, refreshCounts }) {
   const nodeRef = useRef(null);
 
   const [activeTooltip, setActiveTooltip] = useState(null);
@@ -161,6 +161,7 @@ function statusDot(color, label, rowId) {
     if (success) {
       setMessage("İzin başarıyla onaylandı.");
       setRequests(r => r.filter(x => x.id !== req.id));
+      refreshCounts && refreshCounts();
     }
     setProcessing(null);
   }
@@ -173,6 +174,7 @@ function statusDot(color, label, rowId) {
     if (success) {
       setMessage("Talep reddedildi.");
       setRequests(r => r.filter(x => x.id !== req.id));
+      refreshCounts && refreshCounts();
     }
     setProcessing(null);
   }
@@ -187,6 +189,7 @@ function statusDot(color, label, rowId) {
     if (success) {
       setMessage("İzin başarıyla düşüldü.");
       setRequests(r => r.filter(x => x.id !== req.id));
+      refreshCounts && refreshCounts();
     }
     setProcessing(null);
   }
@@ -201,6 +204,7 @@ function statusDot(color, label, rowId) {
     if (success) {
       setMessage("İzin başarıyla geri alındı.");
       setRequests(r => r.filter(x => x.id !== req.id));
+      refreshCounts && refreshCounts();
     }
     setProcessing(null);
   }

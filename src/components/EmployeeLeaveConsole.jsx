@@ -125,11 +125,11 @@ export default function EmployeeLeaveConsole({ managerEmail }) {
                 />
               </div>
               <LeaveRequestList
-                email={selectedUser.email}
-                requests={leaveRequests}
-                isManagerView={true}
-                title={`${getEmailPrefix(selectedUser.email)} İzin Talepleri`}
-                />
+  key={selectedUser.id}
+  userId={selectedUser.id}
+  isManagerView={true}
+  title={`${getEmailPrefix(selectedUser.email)} İzin Talepleri`}
+/>
             </>
           )}
         </div>

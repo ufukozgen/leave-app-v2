@@ -88,7 +88,8 @@ serve(async (req) => {
     // Prepare balance fields (adapt leave_type_id if needed)
     let balanceFields = {
       user_id,
-      leave_type_id: oldBalance?.leave_type_id ?? 1,
+      leave_type_id: oldBalance?.leave_type_id ?? "9664d16e-0a1c-441c-842a-b7371252f943",
+
       accrued,
       used,
       remaining,

@@ -83,31 +83,33 @@ export default function LeaveRequestList({ title, isManagerView = false }) {
 
   const palette = isManagerView ? orangePalette : bluePalette;
 
-  useEffect(() => {
-    setContentVisible(false);
-    const timer = setTimeout(() => setContentVisible(true), 200);
-    return () => clearTimeout(timer);
-  }, [dbUser]);
+useEffect(() => {
+  setContentVisible(false);
+  const timer = setTimeout(() => setContentVisible(true), 200);
+  return () => clearTimeout(timer);
+}, [userId ?? dbUser?.id]);
 
-  useEffect(() => {
-    if (!dbUser?.id) {
-      setRequests([]);
+useEffect(() => {
+  const idToUse = userId ?? dbUser?.id; // Prefer prop, fallback to context user
+  if (!idToUse) {
+    setRequests([]);
+    setFetching(false);
+    return;
+  }
+  setFetching(true);
+  setError("");
+  supabase
+    .from("leave_requests")
+    .select("*")
+    .eq("user_id", idToUse)
+    .order("start_date", { ascending: false })
+    .then(({ data, error }) => {
+      if (error) setError(error.message);
+      else setRequests(data || []);
       setFetching(false);
-      return;
-    }
-    setFetching(true);
-    setError("");
-    supabase
-      .from("leave_requests")
-      .select("*")
-      .eq("user_id", dbUser.id)
-      .order("start_date", { ascending: false })
-      .then(({ data, error }) => {
-        if (error) setError(error.message);
-        else setRequests(data || []);
-        setFetching(false);
-      });
-  }, [dbUser]);
+    });
+}, [userId, dbUser]);
+
 
 async function handleCancel(req) {
   if (!window.confirm("Bu izin talebini iptal etmek istediğinize emin misiniz?")) return;

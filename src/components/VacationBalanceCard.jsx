@@ -135,56 +135,54 @@ return (
   <div
     className="vacation-card"
     style={{
-      padding: "28px 28px 18px 28px",
+      padding: "22px 20px 16px 20px",
       borderRadius: 18,
       background: "#fff",
-      boxShadow: "0 2px 24px #cde5f422",
-      minWidth: 320,
-      maxWidth: 540,
+      boxShadow: "0 2px 18px #cde5f422",
+      minWidth: 290,
+      maxWidth: 410,
       margin: "0 auto",
+      border: `1.5px solid ${COLORS.lightBlue}`,
     }}
   >
-    {/* Main header: photo + info + stats, horizontally aligned */}
     <div
-      className="vacation-card-header"
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 32,
-        minHeight: 92,
-        marginBottom: 8,
+        gap: 16,
+        minHeight: 70,
       }}
     >
-      {/* Profile Photo or fallback avatar */}
+      {/* Profile Photo */}
       {profilePhoto ? (
         <img
           src={profilePhoto}
           alt="Profil Fotoğrafı"
           style={{
-            width: 80,
-            height: 80,
+            width: 60,
+            height: 60,
             borderRadius: "50%",
             objectFit: "cover",
-            boxShadow: "0 1px 8px #0002",
+            boxShadow: "0 1px 8px #0001",
             background: "#eee",
-            border: "1px solid #CDE5F4",
+            border: "2px solid #CDE5F4",
             flexShrink: 0,
           }}
         />
       ) : (
         <div
           style={{
-            width: 80,
-            height: 80,
+            width: 60,
+            height: 60,
             borderRadius: "50%",
             background: "#E0653A33",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 38,
+            fontSize: 28,
             fontWeight: 800,
             color: "#818285",
-            border: "3px solid #CDE5F4",
+            border: "2px solid #CDE5F4",
             flexShrink: 0,
           }}
         >
@@ -197,17 +195,18 @@ return (
         </div>
       )}
 
-      {/* Main info (greeting, label, stats) */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-        {/* Greeting and label */}
+      {/* Info */}
+      <div style={{ flex: 1, minWidth: 0 }}>
         {showGreeting && (
           <div
-            className="vacation-greeting"
             style={{
-              fontSize: 21,
+              fontSize: 17,
               fontWeight: 700,
-              color: "#F39200",
+              color: COLORS.orange,
               marginBottom: 2,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
               lineHeight: 1.2,
             }}
           >
@@ -215,54 +214,43 @@ return (
           </div>
         )}
         <div
-          className="vacation-label"
           style={{
-            fontSize: 17,
+            fontSize: 15,
             fontWeight: 600,
-            color: "#434344",
-            marginBottom: 10,
+            color: COLORS.grayDark,
+            marginBottom: 0,
           }}
         >
-          {title ? title : "İzin Bakiyeniz"}
+          {title || "İzin Bakiyeniz"}
         </div>
-        {/* Stats row */}
+      </div>
+
+      {/* Stat: Kalan X gün */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginLeft: 6 }}>
+        <div style={{ fontSize: 12, color: COLORS.orange, fontWeight: 700, marginBottom: 2 }}>
+          Kalan
+        </div>
         <div
-          className="vacation-stats-row"
           style={{
-            display: "flex",
-            gap: 0,
-            alignItems: "flex-end",
-            marginTop: 0,
+            background: COLORS.orange,
+            color: "#fff",
+            borderRadius: 18,
+            padding: "8px 20px",
+            fontWeight: 800,
+            fontSize: 22,
+            minWidth: 65,
+            textAlign: "center",
+            boxShadow: "0 2px 8px #F3920020",
           }}
         >
-           <div className="vacation-stat" style={{ textAlign: "center" }}>
-            <div className="vacation-remaining-label" style={{ fontSize: 15, color: "#F39200", fontWeight: 700, marginBottom: 1 }}>
-              Kalan
-            </div>
-            <div
-              className="vacation-remaining-value"
-              style={{
-                background: "#F39200",
-                color: "#fff",
-                borderRadius: 22,
-                padding: "10px 28px",
-                fontWeight: 800,
-                fontSize: 30,
-                minWidth: 90,
-                display: "inline-block",
-                marginTop: 2,
-                boxShadow: "0 2px 8px #F3920022",
-              }}
-            >
-              {balance.remaining ?? 0}{" "}
-              <span style={{ fontSize: "0.94rem", fontWeight: 700 }}>gün</span>
-            </div>
-          </div>
+          {balance.remaining ?? 0}{" "}
+          <span style={{ fontSize: "0.93rem", fontWeight: 700 }}>gün</span>
         </div>
       </div>
     </div>
   </div>
 );
+
 
 
 }

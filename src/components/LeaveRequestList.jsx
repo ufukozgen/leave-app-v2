@@ -70,7 +70,7 @@ function statusDot(color, label, id) {
   );
 }
 
-export default function LeaveRequestList({ title, isManagerView = false }) {
+export default function LeaveRequestList({ userId, email, title, isManagerView = false }) {
   // All hooks at the top as before
   const { dbUser, loading } = useUser();
   const [requests, setRequests] = useState([]);

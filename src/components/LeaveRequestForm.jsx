@@ -27,11 +27,19 @@ export default function LeaveRequestForm() {
   useEffect(() => {
     supabase
       .from("holidays")
-      .select("date")
+      .select("date, is_half_day, half")
       .then(({ data }) => {
-        setHolidays(data ? data.map(row => row.date) : []);
+         setHolidays(data || []);
       });
   }, []);
+
+useEffect(() => {
+    const obj = {};
+    holidays.forEach(h => {
+      obj[h.date] = h; // h: { date, is_half_day, half }
+    });
+    setHolidaysMap(obj);
+  }, [holidays]);
 
 useEffect(() => {
   async function fetchAnnualType() {
@@ -76,19 +84,56 @@ useEffect(() => {
 }, [form.start_date, form.end_date, form.duration_type, holidays.length]);
 
 
-  function calculateDays() {
+   function calculateDays() {
     if (!form.start_date || !form.end_date) return 0;
-    if (format(form.start_date, "yyyy-MM-dd") === format(form.end_date, "yyyy-MM-dd")) {
-      return form.duration_type === "full" ? 1 : 0.5;
-    } else {
-      let total = 0;
-      let cur = form.start_date;
-      while (cur <= form.end_date) {
-        if (!isWeekend(cur) && !isHoliday(cur)) total++;
-        cur = addDays(cur, 1);
+    const start = format(form.start_date, "yyyy-MM-dd");
+    const end = format(form.end_date, "yyyy-MM-dd");
+
+    // --- Single-day logic (including half-day leaves)
+    if (start === end) {
+      const halfHoliday = getHalfDayHoliday(form.start_date);
+      if (form.duration_type === "full") {
+        if (isHoliday(form.start_date)) return 0; // full holiday: 0
+        if (halfHoliday) return 0.5; // only half-day possible
+        return 1; // normal
       }
-      return total > 0 ? total : 0;
+      // User picked half-day
+      if (halfHoliday) {
+        // If user picks the same half as the holiday: 0
+        if (
+          (halfHoliday.half === "morning" && form.duration_type === "half-am") ||
+          (halfHoliday.half === "afternoon" && form.duration_type === "half-pm")
+        ) {
+          return 0;
+        } else {
+          return 0.5;
+        }
+      }
+      return 0.5;
     }
+
+    // --- Multi-day logic
+    let total = 0;
+    let cur = form.start_date;
+    while (cur <= form.end_date) {
+      const curStr = format(cur, "yyyy-MM-dd");
+      if (isWeekend(cur)) {
+        // skip
+      } else if (isHoliday(cur)) {
+        // full holiday: skip
+      } else if (holidaysMap[curStr] && holidaysMap[curStr].is_half_day) {
+        total += 0.5;
+      } else {
+        total += 1;
+      }
+      cur = addDays(cur, 1);
+    }
+    return total > 0 ? total : 0;
+  }
+
+  // 5. DatePicker filter (for both start and end)
+  function filterDate(date) {
+    return !isWeekend(date) && !isHoliday(date);
   }
 
   async function handleSubmit(e) {
@@ -218,16 +263,11 @@ if (!response.ok) {
           <DatePicker
             selected={form.start_date}
             minDate={new Date()}
-            filterDate={date => !isWeekend(date) && !isHoliday(date)}
             onChange={date =>
-              setForm(f => ({
-                ...f,
-                start_date: date,
-                end_date: f.end_date && isAfter(date, f.end_date) ? date : f.end_date,
-                duration_type: "full",
-              }))
+              setForm(f => ({ ...form, start_date: date }))
             }
-            dateFormat="yyyy-MM-dd"
+             filterDate={filterDate}
+             dateFormat="yyyy-MM-dd"
             placeholderText="İlk izin gününü seçin"
             required
             withPortal
@@ -306,7 +346,10 @@ if (!response.ok) {
             placeholder="Eklemek istediğiniz notlarınız"
           />
         </div>
-        <button
+        <div>
+        Talep edilen gün sayısı: <b>{calculateDays()}</b>
+      </div>
+      <button
           type="submit"
           disabled={submitting}
           style={{

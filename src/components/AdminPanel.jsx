@@ -39,6 +39,8 @@ export default function AdminPanel() {
   const [addingHoliday, setAddingHoliday] = useState(false);
   const [deletingHolidayId, setDeletingHolidayId] = useState(null);
   const [loadingAnnualType, setLoadingAnnualType] = useState(true);
+  const [isHalfDay, setIsHalfDay] = useState(false);
+  const [half, setHalf] = useState("afternoon"); // default to afternoon (Arife)
 
 
 
@@ -179,18 +181,25 @@ const remaining = parseOrZero(editing[key("remaining")] ?? bal.remaining ?? "");
 
   // Holiday CRUD
   async function handleAddHoliday(e) {
-    e.preventDefault();
-    setAddingHoliday(true);
-    const { data, error } = await supabase.from("holidays").insert([
-      { date: newHolidayDate, name: newHolidayName }
-    ]).select();
-    if (!error && data && data[0]) {
-      setHolidays([...holidays, data[0]]);
-      setNewHolidayDate("");
-      setNewHolidayName("");
-    }
-    setAddingHoliday(false);
+  e.preventDefault();
+  setAddingHoliday(true);
+  const newRow = {
+    date: newHolidayDate,
+    name: newHolidayName,
+    is_half_day: isHalfDay,
+    half: isHalfDay ? half : null
+  };
+  const { data, error } = await supabase.from("holidays").insert([newRow]).select();
+  if (!error && data && data[0]) {
+    setHolidays([...holidays, data[0]]);
+    setNewHolidayDate("");
+    setNewHolidayName("");
+    setIsHalfDay(false);
+    setHalf("afternoon");
   }
+  setAddingHoliday(false);
+}
+
 
   async function onDeleteHoliday(h) {
     if (!window.confirm("Silmek istediğinize emin misiniz?")) return;
@@ -425,40 +434,61 @@ if (!annualType) {
       <h2 style={{ color: "#F39200", marginTop: 42, marginBottom: 10, fontWeight: 700 }}>
         Resmi Tatil Yönetimi
       </h2>
-      <form onSubmit={handleAddHoliday} style={{ marginBottom: 18, display: "flex", gap: 8 }}>
-        <input
-          type="date"
-          required
-          value={newHolidayDate}
-          onChange={e => setNewHolidayDate(e.target.value)}
-          style={{ fontSize: 15, padding: 5, borderRadius: 6, border: "1px solid #CDE5F4" }}
-        />
-        <input
-          type="text"
-          required
-          placeholder="Tatil Adı"
-          value={newHolidayName}
-          onChange={e => setNewHolidayName(e.target.value)}
-          style={{ fontSize: 15, padding: 5, borderRadius: 6, border: "1px solid #CDE5F4" }}
-        />
-        <button type="submit" disabled={addingHoliday} style={{
-          background: "#F39200",
-          color: "#fff",
-          border: "none",
-          borderRadius: 7,
-          padding: "5px 18px",
-          fontWeight: 600,
-          cursor: addingHoliday ? "not-allowed" : "pointer"
-        }}>
-          {addingHoliday ? "Ekleniyor…" : "Ekle"}
-        </button>
-      </form>
+      <form onSubmit={handleAddHoliday} style={{ marginBottom: 18, display: "flex", gap: 8, alignItems: "center" }}>
+  <input
+    type="date"
+    required
+    value={newHolidayDate}
+    onChange={e => setNewHolidayDate(e.target.value)}
+    style={{ fontSize: 15, padding: 5, borderRadius: 6, border: "1px solid #CDE5F4" }}
+  />
+  <input
+    type="text"
+    required
+    placeholder="Tatil Adı"
+    value={newHolidayName}
+    onChange={e => setNewHolidayName(e.target.value)}
+    style={{ fontSize: 15, padding: 5, borderRadius: 6, border: "1px solid #CDE5F4" }}
+  />
+  <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 15 }}>
+    <input
+      type="checkbox"
+      checked={isHalfDay}
+      onChange={e => setIsHalfDay(e.target.checked)}
+      style={{ marginRight: 5 }}
+    />
+    Yarım Gün
+  </label>
+  {isHalfDay && (
+    <select
+      value={half}
+      onChange={e => setHalf(e.target.value)}
+      style={{ fontSize: 15, borderRadius: 6, border: "1px solid #CDE5F4" }}
+    >
+      <option value="morning">Sabah</option>
+      <option value="afternoon">Öğleden Sonra</option>
+    </select>
+  )}
+  <button type="submit" disabled={addingHoliday} style={{
+    background: "#F39200",
+    color: "#fff",
+    border: "none",
+    borderRadius: 7,
+    padding: "5px 18px",
+    fontWeight: 600,
+    cursor: addingHoliday ? "not-allowed" : "pointer"
+  }}>
+    {addingHoliday ? "Ekleniyor…" : "Ekle"}
+  </button>
+</form>
+
 
       <table style={{ width: "100%", background: "#F8FBFD", borderRadius: 10, fontSize: 16 }}>
         <thead>
           <tr>
             <th style={{ padding: 10 }}>Tarih</th>
             <th>Adı</th>
+            <th>Yarım Gün</th>
             <th style={{ width: 60 }}>İşlem</th>
           </tr>
         </thead>
@@ -467,6 +497,10 @@ if (!annualType) {
             <tr key={h.id || i}>
               <td>{formatDateTR(h.date)}</td>
               <td>{h.name}</td>
+              <td>
+                {h.is_half_day
+                  ? (h.half === "morning" ? "Sabah" : "Öğleden Sonra")
+                  : "Tam"}</td>
               <td>
                 <button
                   onClick={() => onDeleteHoliday(h)}

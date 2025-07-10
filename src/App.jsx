@@ -74,7 +74,7 @@ if (!isLoggedIn) {
       >
         <div style={{ marginBottom: 14 }}>
           <img
-            src="https://www.terralab.com.tr/wp-content/uploads/2023/10/terralab-logo-1.png"
+            src="/terralab_logo_dijital_kullanım(rgb).png"
             alt="Terralab Logo"
             style={{ width: 110, marginBottom: 8 }}
           />

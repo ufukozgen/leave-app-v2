@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { useUser } from "./UserContext";
-import StatusLegend from "./StatusLegend";
 
 const bluePalette = {
   headerBg: "#A8D2F2",
@@ -40,6 +39,14 @@ const typeLabels = {
   "half-pm": "Yarım Gün (Öğleden Sonra)",
 };
 
+const EDGE_URL = "https://sxinuiwawpruwzxfcgpc.functions.supabase.co";
+const EDGE_ENDPOINTS = {
+  approve: `${EDGE_URL}/approve-leave`,
+  reject: `${EDGE_URL}/reject-leave`,
+  deduct: `${EDGE_URL}/deduct-leave`,
+  reverse: `${EDGE_URL}/reverse-leave`
+};
+
 function formatDateTR(iso) {
   if (!iso) return "";
   const date = typeof iso === "string" ? new Date(iso) : iso;
@@ -70,6 +77,19 @@ function statusDot(color, label, id) {
   );
 }
 
+// Status legend now includes Düşüldü
+function StatusLegend() {
+  return (
+    <div style={{ marginTop: 14, display: "flex", gap: 14, fontSize: 14, fontFamily: "Urbanist, Arial, sans-serif" }}>
+      <span>{statusDot(statusColors["Beklemede"], "Beklemede")} Beklemede</span>
+      <span>{statusDot(statusColors["Onaylandı"], "Onaylandı")} Onaylandı</span>
+      <span>{statusDot(statusColors["Düşüldü"], "Düşüldü")} Düşüldü</span>
+      <span>{statusDot(statusColors["Reddedildi"], "Reddedildi")} Reddedildi</span>
+      <span>{statusDot(statusColors["İptal"], "İptal")} İptal</span>
+    </div>
+  );
+}
+
 export default function LeaveRequestList({ userId, email, title, isManagerView = false }) {
   // All hooks at the top as before
   const { dbUser, loading } = useUser();
@@ -81,85 +101,159 @@ export default function LeaveRequestList({ userId, email, title, isManagerView =
   const [activeTooltip, setActiveTooltip] = useState(null);
   const [contentVisible, setContentVisible] = useState(false);
 
+  // New for manager actions
+  const [processing, setProcessing] = useState(null);
+  const [message, setMessage] = useState("");
+
   const palette = isManagerView ? orangePalette : bluePalette;
 
-useEffect(() => {
-  setContentVisible(false);
-  const timer = setTimeout(() => setContentVisible(true), 200);
-  return () => clearTimeout(timer);
-}, [userId ?? dbUser?.id]);
+  // Figure out who is viewing whose requests
+  // "Self" means: the current row is for the logged-in user
+  const targetUserId = userId ?? dbUser?.id;
+  const isSelf = !!dbUser && targetUserId === dbUser.id;
 
-useEffect(() => {
-  const idToUse = userId ?? dbUser?.id; // Prefer prop, fallback to context user
-  if (!idToUse) {
-    setRequests([]);
-    setFetching(false);
-    return;
-  }
-  setFetching(true);
-  setError("");
-  supabase
-    .from("leave_requests")
-    .select("*")
-    .eq("user_id", idToUse)
-    .order("start_date", { ascending: false })
-    .then(({ data, error }) => {
-      if (error) setError(error.message);
-      else setRequests(data || []);
+  useEffect(() => {
+    setContentVisible(false);
+    const timer = setTimeout(() => setContentVisible(true), 200);
+    return () => clearTimeout(timer);
+  }, [userId ?? dbUser?.id]);
+
+  useEffect(() => {
+    const idToUse = userId ?? dbUser?.id;
+    if (!idToUse) {
+      setRequests([]);
       setFetching(false);
+      return;
+    }
+    setFetching(true);
+    setError("");
+    supabase
+      .from("leave_requests")
+      .select("*")
+      .eq("user_id", idToUse)
+      .order("start_date", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) setError(error.message);
+        else setRequests(data || []);
+        setFetching(false);
+      });
+  }, [userId, dbUser]);
+
+  // Cancel only for self (pending or approved)
+  async function handleCancel(req) {
+    if (!window.confirm("Bu izin talebini iptal etmek istediğinize emin misiniz?")) return;
+    setCancelId(req.id);
+
+    // Get session token from Supabase
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    if (!token) {
+      alert("Oturum doğrulanamadı, lütfen tekrar giriş yapın.");
+      setCancelId(null);
+      return;
+    }
+
+    // Call edge function
+    const response = await fetch("https://sxinuiwawpruwzxfcgpc.functions.supabase.co/cancel-leave", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({ request_id: req.id }),
     });
-}, [userId, dbUser]);
 
-
-async function handleCancel(req) {
-  if (!window.confirm("Bu izin talebini iptal etmek istediğinize emin misiniz?")) return;
-  setCancelId(req.id);
-
-  // Get session token from Supabase
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
-
-  if (!token) {
-    alert("Oturum doğrulanamadı, lütfen tekrar giriş yapın.");
+    if (response.ok) {
+      // Logging: cancellation
+      await supabase.from("logs").insert([{
+        user_id: dbUser.id,
+        actor_email: dbUser.email,
+        action: "cancel_request",
+        target_table: "leave_requests",
+        target_id: req.id,
+        status_before: req.status,
+        status_after: "Cancelled",
+        details: { start_date: req.start_date, end_date: req.end_date, days: req.days }
+      }]);
+      // Refresh list in UI
+      setRequests(r =>
+        r.map(item => (item.id === req.id ? { ...item, status: "Cancelled" } : item))
+      );
+    } else {
+      const result = await response.json();
+      alert("İptal başarısız: " + (result?.error || "Bilinmeyen hata"));
+    }
     setCancelId(null);
-    return;
   }
 
-  // Call edge function
-  const response = await fetch("https://sxinuiwawpruwzxfcgpc.functions.supabase.co/cancel-leave", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
-    },
-    body: JSON.stringify({ request_id: req.id }),
-  });
+  // ----------- Manager Actions (only if NOT self) ------------
 
-  if (response.ok) {
-    // Logging: cancellation
-    await supabase.from("logs").insert([{
-      user_id: dbUser.id,
-      actor_email: dbUser.email,
-      action: "cancel_request",
-      target_table: "leave_requests",
-      target_id: req.id,
-      status_before: req.status,
-      status_after: "Cancelled",
-      details: { start_date: req.start_date, end_date: req.end_date, days: req.days }
-    }]);
-    // Refresh list in UI
-    setRequests(r =>
-      r.map(item => (item.id === req.id ? { ...item, status: "Cancelled" } : item))
-    );
-  } else {
-    const result = await response.json();
-    alert("İptal başarısız: " + (result?.error || "Bilinmeyen hata"));
+  async function callEdgeFunction(endpoint, bodyObj) {
+    setMessage("");
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
+      if (!token) throw new Error("Oturum bulunamadı!");
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(bodyObj)
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Bir hata oluştu.");
+      return { success: true, data: json };
+    } catch (e) {
+      setMessage(e.message);
+      return { success: false };
+    }
   }
-  setCancelId(null);
-}
 
+  async function handleApprove(req) {
+    setProcessing({ id: req.id, type: "approve" });
+    const { success } = await callEdgeFunction(EDGE_ENDPOINTS.approve, { request_id: req.id });
+    if (success) {
+      setRequests(r => r.map(item => item.id === req.id ? { ...item, status: "Approved" } : item));
+    }
+    setProcessing(null);
+  }
 
-   if (!contentVisible) {
+  async function handleReject(req) {
+    const reason = prompt("Reddetme gerekçesi (görünecek):");
+    if (!reason) return;
+    setProcessing({ id: req.id, type: "reject" });
+    const { success } = await callEdgeFunction(EDGE_ENDPOINTS.reject, { request_id: req.id, reason });
+    if (success) {
+      setRequests(r => r.map(item => item.id === req.id ? { ...item, status: "Rejected" } : item));
+    }
+    setProcessing(null);
+  }
+
+  async function handleDeduct(req) {
+    if (!window.confirm("Bu izin talebini düşmek (kullanıldı olarak işaretlemek) istediğinize emin misiniz?")) return;
+    setProcessing({ id: req.id, type: "deduct" });
+    const { success } = await callEdgeFunction(EDGE_ENDPOINTS.deduct, { request_id: req.id });
+    if (success) {
+      setRequests(r => r.map(item => item.id === req.id ? { ...item, status: "Deducted" } : item));
+    }
+    setProcessing(null);
+  }
+
+  async function handleReverse(req) {
+    if (!window.confirm("Bu izin hareketini geri almak istediğinize emin misiniz?")) return;
+    setProcessing({ id: req.id, type: "reverse" });
+    const { success } = await callEdgeFunction(EDGE_ENDPOINTS.reverse, { request_id: req.id });
+    if (success) {
+      setRequests(r => r.map(item => item.id === req.id ? { ...item, status: "Pending" } : item));
+    }
+    setProcessing(null);
+  }
+
+  // ----------- Render -----------
+  if (!contentVisible) {
     return null;
   }
 
@@ -175,6 +269,17 @@ async function handleCancel(req) {
       >
         {title || "İzin Taleplerim"}
       </h2>
+
+      {message && (
+        <div style={{
+          background: "#CDE5F4",
+          color: "#434344",
+          borderRadius: 8,
+          padding: "8px 18px",
+          fontWeight: 700,
+          marginBottom: 16
+        }}>{message}</div>
+      )}
 
       {fetching && <p>Yükleniyor...</p>}
       {error && <p style={{ color: "#E0653A" }}>{error}</p>}
@@ -294,7 +399,8 @@ async function handleCancel(req) {
                       )}
                     </td>
                     <td style={{ textAlign: "center" }}>
-                      {!isManagerView && (req.status === "Pending" || req.status === "Approved") && (
+                      {/* EMPLOYEE (SELF) VIEW: only cancel */}
+                      {isSelf && (req.status === "Pending" || req.status === "Approved") && (
                         <button
                           className="cancel-button"
                           onClick={() => handleCancel(req)}
@@ -348,6 +454,97 @@ async function handleCancel(req) {
                             </span>
                           )}
                         </button>
+                      )}
+
+                      {/* MANAGER VIEW: only for requests NOT your own */}
+                      {!isSelf && isManagerView && (
+                        <>
+                          {req.status === "Pending" && (
+                            <>
+                              <button
+                                onClick={() => handleApprove(req)}
+                                disabled={!!processing}
+                                style={{
+                                  background: "#50B881",
+                                  color: "#fff",
+                                  border: "none",
+                                  borderRadius: 7,
+                                  marginRight: 6,
+                                  padding: "2px 8px",
+                                  fontWeight: 700,
+                                  cursor: "pointer"
+                                }}
+                                title="Onayla"
+                              >✔</button>
+                              <button
+                                onClick={() => handleReject(req)}
+                                disabled={!!processing}
+                                style={{
+                                  background: "#E0653A",
+                                  color: "#fff",
+                                  border: "none",
+                                  borderRadius: 7,
+                                  marginRight: 6,
+                                  padding: "2px 8px",
+                                  fontWeight: 700,
+                                  cursor: "pointer"
+                                }}
+                                title="Reddet"
+                              >×</button>
+                            </>
+                          )}
+                          {req.status === "Approved" && (
+                            <>
+                              <button
+                                onClick={() => handleDeduct(req)}
+                                disabled={!!processing}
+                                style={{
+                                  background: "#74B4DE",
+                                  color: "#fff",
+                                  border: "none",
+                                  borderRadius: 7,
+                                  marginRight: 6,
+                                  padding: "2px 8px",
+                                  fontWeight: 700,
+                                  cursor: "pointer"
+                                }}
+                                title="Düş"
+                              >↓</button>
+                              <button
+                                onClick={() => handleReverse(req)}
+                                disabled={!!processing}
+                                style={{
+                                  background: "#818285",
+                                  color: "#fff",
+                                  border: "none",
+                                  borderRadius: 7,
+                                  marginRight: 6,
+                                  padding: "2px 8px",
+                                  fontWeight: 700,
+                                  cursor: "pointer"
+                                }}
+                                title="Geri Al"
+                              >↩</button>
+                            </>
+                          )}
+                          {req.status === "Deducted" && (
+                            <button
+                              onClick={() => handleReverse(req)}
+                              disabled={!!processing}
+                              style={{
+                                background: "#818285",
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: 7,
+                                marginRight: 6,
+                                padding: "2px 8px",
+                                fontWeight: 700,
+                                cursor: "pointer"
+                              }}
+                              title="Geri Al"
+                            >↩</button>
+                          )}
+                        </>
                       )}
                     </td>
                   </tr>

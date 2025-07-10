@@ -82,7 +82,7 @@ export default function AdminPanel() {
     return;
   }
   try {
-    const res = await fetch("https://YOUR_PROJECT.supabase.co/functions/v1/assign-manager", {
+    const res = await fetch("https://sxinuiwawpruwzxfcgpc.supabase.co/functions/v1/assign-manager", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -113,7 +113,7 @@ async function handleRoleChange(userId, newRole) {
     return;
   }
   try {
-    const res = await fetch("https://YOUR_PROJECT.supabase.co/functions/v1/assign-role", {
+    const res = await fetch("https://sxinuiwawpruwzxfcgpc.supabase.co/functions/v1/assign-role", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -345,32 +345,41 @@ if (!annualType) {
           </td>
           {/* Yönetici seçimi */}
           <td style={td}>
-            <select
-              value={user.manager_email || ""}
-              onChange={e => handleManagerChange(user.id, e.target.value)}
-              style={inputStyle}
-            >
-              <option value="">Yok</option>
-              {users
-                .filter(u => u.email !== user.email)
-                .map(mgr => (
-                  <option key={mgr.email} value={mgr.email}>
-                    {mgr.name || mgr.email}
-                  </option>
-                ))}
-            </select>
+            {user.role === "admin" ? (
+              users.find(u => u.email === user.manager_email)?.name ||
+              user.manager_email ||
+              "-"
+            ) : (
+              <select
+                value={user.manager_email || ""}
+                onChange={e => handleManagerChange(user.id, e.target.value)}
+                style={inputStyle}
+              >
+                <option value="">Yok</option>
+                {users
+                  .filter(u => u.email !== user.email)
+                  .map(mgr => (
+                    <option key={mgr.email} value={mgr.email}>
+                      {mgr.name || mgr.email}
+                    </option>
+                  ))}
+              </select>
+            )}
           </td>
           {/* Rol seçimi */}
           <td style={td}>
-            <select
-              value={user.role}
-              onChange={e => handleRoleChange(user.id, e.target.value)}
-              style={inputStyle}
-            >
-              <option value="user">Kullanıcı</option>
-              <option value="manager">Yönetici</option>
-              {/* admin assignment is backend only */}
-            </select>
+            {user.role === "admin" ? (
+              "Admin"
+            ) : (
+              <select
+                value={user.role}
+                onChange={e => handleRoleChange(user.id, e.target.value)}
+                style={inputStyle}
+              >
+                <option value="user">Kullanıcı</option>
+                <option value="manager">Yönetici</option>
+              </select>
+            )}
           </td>
           {/* Kaydet butonu */}
           <td style={td}>
@@ -415,6 +424,7 @@ if (!annualType) {
     })}
   </tbody>
 </table>
+
 
 
 

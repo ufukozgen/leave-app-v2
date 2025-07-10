@@ -31,3 +31,5 @@ set-admin-claim.js
 
 # BFG reports (if you want)
 leave-app-v2.git.bfg-report/
+
+bfg-*.jar

@@ -87,7 +87,14 @@ useEffect(() => {
 }, [form.start_date, form.end_date, form.duration_type, holidays.length]);
 
 
-   function calculateDays() {
+   function getHalfDayHoliday(date) {
+  const d = format(date, "yyyy-MM-dd");
+  if (holidaysMap[d] && holidaysMap[d].is_half_day) {
+    return holidaysMap[d];
+  }
+  return null;
+}
+  function calculateDays() {
     if (!form.start_date || !form.end_date) return 0;
     const start = format(form.start_date, "yyyy-MM-dd");
     const end = format(form.end_date, "yyyy-MM-dd");

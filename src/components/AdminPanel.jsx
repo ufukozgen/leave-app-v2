@@ -38,6 +38,7 @@ export default function AdminPanel() {
   const [half, setHalf] = useState("afternoon");
   const [allowRetroactiveLeave, setAllowRetroactiveLeave] = useState(false);
   const [refreshingUserId, setRefreshingUserId] = useState(null);
+  const [recentlyRefreshedUserId, setRecentlyRefreshedUserId] = useState(null);
 
   // Fetch all users, balances, holidays, etc.
   useEffect(() => {
@@ -236,24 +237,28 @@ export default function AdminPanel() {
 
   // Row refresh (🔄) per user
   async function handleRefreshUser(userId) {
-    setRefreshingUserId(userId);
-    setMessage("");
-    const { data: updatedUser, error } = await supabase
-      .from("users")
-      .select("id, name, email, role, manager_email")
-      .eq("id", userId)
-      .maybeSingle();
-    if (error || !updatedUser) {
-      setMessage("Kullanıcı bilgisi güncellenemedi.");
-      setRefreshingUserId(null);
-      return;
-    }
-    setUsers(users =>
-      users.map(u => u.id === userId ? { ...u, ...updatedUser } : u)
-    );
-    setMessage("Kullanıcı bilgisi yenilendi.");
+  setRefreshingUserId(userId);
+  setMessage("");
+  const { data: updatedUser, error } = await supabase
+    .from("users")
+    .select("id, name, email, role, manager_email")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error || !updatedUser) {
+    setMessage("Kullanıcı bilgisi güncellenemedi.");
     setRefreshingUserId(null);
+    return;
   }
+  setUsers(users =>
+    users.map(u => u.id === userId ? { ...u, ...updatedUser } : u)
+  );
+  setMessage("Kullanıcı bilgisi yenilendi.");
+  setRefreshingUserId(null);
+
+  // Highlight the row for 1 second
+  setRecentlyRefreshedUserId(userId);
+  setTimeout(() => setRecentlyRefreshedUserId(null), 1000);
+}
 
   // Retroactive toggle
   useEffect(() => {
@@ -335,133 +340,145 @@ export default function AdminPanel() {
           <tr style={{ background: "#CDE5F4", color: "#434344" }}>
             <th style={th}>Kullanıcı</th>
             <th style={th}>E-posta</th>
-            <th style={th}>Kalan</th>
-            <th style={th}>Yönetici</th>
             <th style={th}>Rol</th>
-            <th style={th}></th>
-            <th style={th}></th>
+            <th style={th}>Yönetici</th>
+            <th style={{ ...th, borderLeft: "2px solid #cde5f4" }} colSpan={3}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18 }}>
+                <span>Kalan</span>
+                <span></span>
+                <span></span>
+              </div>
+            </th>
           </tr>
         </thead>
         <tbody>
-          {users.map(user => {
-            const bal = getBal(user.id);
-            const key = (field) => `${user.id}_${field}`;
-            const remaining = editing[key("remaining")] ?? bal.remaining ?? "";
+  {users.map(user => {
+    const bal = getBal(user.id);
+    const key = (field) => `${user.id}_${field}`;
+    const remaining = editing[key("remaining")] ?? bal.remaining ?? "";
 
-            return (
-              <tr key={user.id}>
-                {/* Kullanıcı adı */}
-                <td style={td}>{user.name || user.email}</td>
-                {/* E-posta */}
-                <td style={td}>{user.email}</td>
-                {/* Kalan izin günleri */}
-                <td style={td}>
-                  <input
-                    type="number"
-                    value={remaining}
-                    onChange={e => onEdit(user.id, "remaining", e.target.value)}
-                    style={inputStyle}
-                    min={0}
-                  />
-                </td>
-                {/* Yönetici seçimi */}
-                <td style={td}>
-                  {user.role === "admin" ? (
-                    users.find(u => u.email === user.manager_email)?.name ||
-                    user.manager_email ||
-                    "-"
-                  ) : (
-                    <select
-                      value={user.manager_email || ""}
-                      onChange={e => handleManagerChange(user.id, e.target.value)}
-                      style={inputStyle}
-                    >
-                      <option value="">Yok</option>
-                      {users
-                        .filter(u => u.email !== user.email)
-                        .map(mgr => (
-                          <option key={mgr.email} value={mgr.email}>
-                            {mgr.name || mgr.email}
-                          </option>
-                        ))}
-                    </select>
-                  )}
-                </td>
-                {/* Rol seçimi */}
-                <td style={td}>
-                  {user.role === "admin" ? (
-                    "Admin"
-                  ) : (
-                    <select
-                      value={user.role}
-                      onChange={e => handleRoleChange(user.id, e.target.value)}
-                      style={inputStyle}
-                    >
-                      <option value="user">Kullanıcı</option>
-                      <option value="manager">Yönetici</option>
-                    </select>
-                  )}
-                </td>
-                {/* Kaydet butonu */}
-                <td style={td}>
-                  <button
-                    style={{
-                      background: "#F39200",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: 7,
-                      padding: "5px 12px",
-                      fontWeight: 600,
-                      cursor: savingUserId === user.id ? "not-allowed" : "pointer",
-                      minWidth: 90,
-                      position: "relative"
-                    }}
-                    disabled={savingUserId === user.id}
-                    onClick={() => onSaveClick(user)}
-                  >
-                    {savingUserId === user.id ? (
-                      <>
-                        <span
-                          className="spinner"
-                          style={{
-                            width: 16,
-                            height: 16,
-                            border: "2px solid #fff",
-                            borderTop: "2px solid #F0B357",
-                            borderRadius: "50%",
-                            display: "inline-block",
-                            marginRight: 6,
-                            animation: "spin 1s linear infinite",
-                            verticalAlign: "middle"
-                          }}
-                        />
-                        Kaydediliyor…
-                      </>
-                    ) : "Kaydet"}
-                  </button>
-                </td>
-                {/* Refresh button */}
-                <td style={td}>
-                  <button
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: refreshingUserId === user.id ? "not-allowed" : "pointer",
-                      fontSize: 18,
-                      padding: 4,
-                      marginLeft: 4
-                    }}
-                    title="Satırı yenile"
-                    onClick={() => handleRefreshUser(user.id)}
-                    disabled={refreshingUserId === user.id}
-                  >
-                    {refreshingUserId === user.id ? "…" : "🔄"}
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
+    // For smooth row highlight after refresh
+    const highlight = recentlyRefreshedUserId === user.id;
+
+    return (
+      <tr
+        key={user.id}
+        style={{
+          transition: "background 0.5s, opacity 0.5s",
+          background: highlight ? "#e9faf5" : undefined,
+          opacity: refreshingUserId === user.id ? 0.5 : 1
+        }}
+      >
+        {/* Kullanıcı adı */}
+        <td style={td}>{user.name || user.email}</td>
+        {/* E-posta */}
+        <td style={td}>{user.email}</td>
+        {/* Rol seçimi */}
+        <td style={td}>
+          {user.role === "admin" ? (
+            "Admin"
+          ) : (
+            <select
+              value={user.role}
+              onChange={e => handleRoleChange(user.id, e.target.value)}
+              style={inputStyle}
+            >
+              <option value="user">Kullanıcı</option>
+              <option value="manager">Yönetici</option>
+            </select>
+          )}
+        </td>
+        {/* Yönetici seçimi */}
+        <td style={td}>
+          {user.role === "admin" ? (
+            users.find(u => u.email === user.manager_email)?.name ||
+            user.manager_email ||
+            "-"
+          ) : (
+            <select
+              value={user.manager_email || ""}
+              onChange={e => handleManagerChange(user.id, e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">Yok</option>
+              {users
+                .filter(u => u.email !== user.email)
+                .map(mgr => (
+                  <option key={mgr.email} value={mgr.email}>
+                    {mgr.name || mgr.email}
+                  </option>
+                ))}
+            </select>
+          )}
+        </td>
+        {/* --- Grouped Actions: Kalan + Kaydet + Refresh --- */}
+        <td style={{ ...td, borderLeft: "2px solid #cde5f4", background: "#f8fbfd" }}>
+          <input
+            type="number"
+            value={remaining}
+            onChange={e => onEdit(user.id, "remaining", e.target.value)}
+            style={inputStyle}
+            min={0}
+          />
+        </td>
+        <td style={{ ...td, background: "#f8fbfd" }}>
+          <button
+            style={{
+              background: "#F39200",
+              color: "#fff",
+              border: "none",
+              borderRadius: 7,
+              padding: "5px 12px",
+              fontWeight: 600,
+              cursor: savingUserId === user.id ? "not-allowed" : "pointer",
+              minWidth: 90,
+              position: "relative"
+            }}
+            disabled={savingUserId === user.id}
+            onClick={() => onSaveClick(user)}
+          >
+            {savingUserId === user.id ? (
+              <>
+                <span
+                  className="spinner"
+                  style={{
+                    width: 16,
+                    height: 16,
+                    border: "2px solid #fff",
+                    borderTop: "2px solid #F0B357",
+                    borderRadius: "50%",
+                    display: "inline-block",
+                    marginRight: 6,
+                    animation: "spin 1s linear infinite",
+                    verticalAlign: "middle"
+                  }}
+                />
+                Kaydediliyor…
+              </>
+            ) : "Kaydet"}
+          </button>
+        </td>
+        <td style={{ ...td, background: "#f8fbfd" }}>
+          <button
+            style={{
+              background: "none",
+              border: "none",
+              cursor: refreshingUserId === user.id ? "not-allowed" : "pointer",
+              fontSize: 18,
+              padding: 4,
+              marginLeft: 4
+            }}
+            title="Satırı yenile"
+            onClick={() => handleRefreshUser(user.id)}
+            disabled={refreshingUserId === user.id}
+          >
+            {refreshingUserId === user.id ? "…" : "🔄"}
+          </button>
+        </td>
+      </tr>
+    );
+  })}
+</tbody>
       </table>
 
       {/* Confirmation Modal/Dialog */}

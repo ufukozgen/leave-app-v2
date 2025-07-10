@@ -1,16 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { sendGraphEmail } from "../helpers/sendGraphEmail.ts";
 
-// Uses ENV variables set in Supabase dashboard
-const FEEDBACK_TO = Deno.env.get("FEEDBACK_TO"); // e.g. izinapp-feedback@terralab.com.tr
-// FEEDBACK_FROM not needed; AZURE_MAILBOX_USER used by helper
+const FEEDBACK_TO = Deno.env.get("FEEDBACK_TO");
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "https://leave-app-v2.vercel.app",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 serve(async (req) => {
-  if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({ error: "Sadece POST istekleri destekleniyor." }),
-      { status: 405 }
-    );
+  if (req.method === "OPTIONS") {
+    // CORS preflight
+    return new Response("ok", { headers: corsHeaders });
   }
 
   let data;
@@ -19,7 +20,7 @@ serve(async (req) => {
   } catch {
     return new Response(
       JSON.stringify({ error: "Geçersiz istek formatı." }),
-      { status: 400 }
+      { status: 400, headers: corsHeaders }
     );
   }
 
@@ -31,11 +32,10 @@ serve(async (req) => {
   ) {
     return new Response(
       JSON.stringify({ error: "Zorunlu alanlar eksik. Lütfen tekrar deneyin." }),
-      { status: 400 }
+      { status: 400, headers: corsHeaders }
     );
   }
 
-  // Extract email prefix
   const emailPrefix = email.split("@")[0];
 
   const html = `
@@ -53,11 +53,11 @@ serve(async (req) => {
       subject: `İzinApp Kullanıcı Geri Bildirimi (${emailPrefix})`,
       html,
     });
-    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: corsHeaders });
   } catch (err) {
     return new Response(
       JSON.stringify({ error: "E-posta gönderilemedi. " + (err.message || "") }),
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 });

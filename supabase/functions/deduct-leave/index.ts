@@ -103,14 +103,10 @@ serve(async (req) => {
       });
     }
 
-    const daysToDeduct = Number(leave.days);
+        const daysToDeduct = Number(leave.days);
     const newUsed = Number(balance.used) + daysToDeduct;
     const newRemaining = Number(balance.remaining) - daysToDeduct;
-    if (newRemaining < 0) {
-      return new Response(JSON.stringify({ error: "Yeterli izin bakiyesi yok." }), {
-        status: 400, headers: corsHeaders
-      });
-    }
+    // ---- Allow negative balances (advance leave) ----
 
     const { error: updateBalanceError } = await supabase
       .from("leave_balances")
@@ -177,11 +173,18 @@ serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: corsHeaders,
-    });
-
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        warning: newRemaining < 0 ? "Bu işlem sonucu çalışan bakiyesi negatife düştü!" : undefined
+      }),
+      {
+        status: 200,
+        headers: corsHeaders,
+      }
+    );
+    
   } catch (e) {
     return new Response(JSON.stringify({ error: "Beklenmeyen hata: " + (e?.message || e) }), {
       status: 500,
@@ -189,3 +192,4 @@ serve(async (req) => {
     });
   }
 });
+

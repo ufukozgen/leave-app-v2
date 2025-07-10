@@ -8,6 +8,7 @@ import { addDays, isWeekend, format, isAfter } from "date-fns";
 export default function LeaveRequestForm() {
   const { dbUser, loading } = useUser();
   const [annualType, setAnnualType] = useState(null);
+  const [allowRetroactiveLeave, setAllowRetroactiveLeave] = useState(false);
   const [holidaysMap, setHolidaysMap] = useState({});
   const [holidays, setHolidays] = useState([]);
   const [form, setForm] = useState({
@@ -35,6 +36,14 @@ export default function LeaveRequestForm() {
          setHolidays(data || []);
       });
   }, []);
+
+useEffect(() => {
+  async function fetchSettings() {
+    const { data } = await supabase.from("settings").select("allow_retroactive_leave").single();
+    if (data) setAllowRetroactiveLeave(data.allow_retroactive_leave);
+  }
+  fetchSettings();
+}, []);
 
 useEffect(() => {
     const obj = {};
@@ -272,7 +281,7 @@ if (!response.ok) {
           <label>Başlangıç Tarihi:</label><br />
           <DatePicker
             selected={form.start_date}
-            minDate={new Date()}
+            minDate={allowRetroactiveLeave ? undefined : new Date()}
             onChange={date =>
               setForm(f => ({ ...form, start_date: date }))
             }
@@ -288,7 +297,7 @@ if (!response.ok) {
           <label>Bitiş Tarihi:</label><br />
           <DatePicker
             selected={form.end_date}
-            minDate={form.start_date || new Date()}
+            minDate={form.start_date || (allowRetroactiveLeave ? undefined : new Date())}
             filterDate={date =>
               (!form.start_date || date >= form.start_date) &&
               !isWeekend(date) &&

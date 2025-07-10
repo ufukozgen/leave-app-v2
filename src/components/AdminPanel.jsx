@@ -33,10 +33,15 @@ export default function AdminPanel() {
   const [loadingAnnualType, setLoadingAnnualType] = useState(true);
   const [isHalfDay, setIsHalfDay] = useState(false);
   const [half, setHalf] = useState("afternoon"); // default to afternoon (Arife)
+  const [allowRetroactiveLeave, setAllowRetroactiveLeave] = useState(false);
 
 
 
   // Load data
+  
+  
+  
+  
   useEffect(() => {
     async function fetchAll() {
       const { data: usersData } = await supabase.from("users").select("id, name, email");
@@ -162,6 +167,25 @@ export default function AdminPanel() {
     setConfirmingUser(null);
     setAdminNote("");
   }
+
+// Fetch on load
+useEffect(() => {
+  async function fetchSettings() {
+    const { data } = await supabase.from("settings").select("allow_retroactive_leave").single();
+    if (data) setAllowRetroactiveLeave(data.allow_retroactive_leave);
+  }
+  fetchSettings();
+}, []);
+
+// Update in database
+async function handleToggleRetroactive() {
+  const { data, error } = await supabase
+    .from("settings")
+    .update({ allow_retroactive_leave: !allowRetroactiveLeave })
+    .eq("id", 1); // adjust if you have multiple settings rows
+  if (!error) setAllowRetroactiveLeave(!allowRetroactiveLeave);
+  // Optionally add notification here
+}
 
   // Holiday CRUD
   async function handleAddHoliday(e) {
@@ -372,6 +396,53 @@ if (!annualType) {
           </div>
         </div>
       )}
+      <div style={{ margin: "20px 0", padding: 12, background: "#F8FBFD", borderRadius: 7 }}>
+  <label style={{ fontSize: 17, fontWeight: 600, display: "flex", alignItems: "center", gap: 16 }}>
+    <span>
+      Kullanıcılar geçmiş tarihler için izin talep edebilsin (retroaktif izin)
+    </span>
+    <div
+      onClick={handleToggleRetroactive}
+      style={{
+        width: 48,
+        height: 26,
+        borderRadius: 18,
+        background: allowRetroactiveLeave ? "#74B4DE" : "#E0653A",
+        position: "relative",
+        cursor: "pointer",
+        transition: "background 0.25s",
+        boxShadow: allowRetroactiveLeave ? "0 0 6px #A8D2F2" : "0 0 6px #E0653A44",
+        border: allowRetroactiveLeave ? "1.5px solid #74B4DE" : "1.5px solid #E0653A"
+      }}
+      tabIndex={0}
+      role="button"
+      aria-pressed={allowRetroactiveLeave}
+      onKeyDown={e => { if (e.key === " " || e.key === "Enter") handleToggleRetroactive(); }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          left: allowRetroactiveLeave ? 24 : 2,
+          top: 2,
+          width: 22,
+          height: 22,
+          borderRadius: "50%",
+          background: "#fff",
+          boxShadow: "0 1px 4px #8883",
+          transition: "left 0.25s"
+        }}
+      />
+    </div>
+    <span style={{
+      fontWeight: 600,
+      color: allowRetroactiveLeave ? "#1C6234" : "#E0653A",
+      marginLeft: 10,
+      minWidth: 68
+    }}>
+      {allowRetroactiveLeave ? "Açık" : "Kapalı"}
+    </span>
+  </label>
+</div>
 
       {/* HOLIDAY MANAGEMENT */}
       <h2 style={{ color: "#F39200", marginTop: 42, marginBottom: 10, fontWeight: 700 }}>

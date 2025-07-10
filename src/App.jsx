@@ -6,6 +6,7 @@ import VacationBalanceCard from "./components/VacationBalanceCard";
 import ManagerPanel from "./components/ManagerPanel";
 import EmployeeLeaveConsole from "./components/EmployeeLeaveConsole";
 import AdminPanel from "./components/AdminPanel";
+import { FeedbackFooter } from "./components/FeedbackFooter";
 import { useUser } from "./components/UserContext";
 import { supabase } from "./supabaseClient";
 import { CSSTransition, SwitchTransition } from "react-transition-group";
@@ -273,6 +274,7 @@ const managerTotal = pendingCount + approvedCount;
           </CSSTransition>
         </SwitchTransition>
       </div>
+    <FeedbackFooter />
     </>
   );
 }

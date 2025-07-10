@@ -97,3 +97,25 @@ entrypoint = "./functions/send-feedback/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/send-feedback/*.html" ]
+
+[functions.assign-manager]
+enabled = true
+verify_jwt = true
+import_map = "./functions/assign-manager/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/assign-manager/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/assign-manager/*.html" ]
+
+[functions.assign-role]
+enabled = true
+verify_jwt = true
+import_map = "./functions/assign-role/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/assign-role/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/assign-role/*.html" ]

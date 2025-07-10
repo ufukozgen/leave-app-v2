@@ -44,7 +44,7 @@ export default function AdminPanel() {
   
   useEffect(() => {
     async function fetchAll() {
-      const { data: usersData } = await supabase.from("users").select("id, name, email");
+      const { data: usersData } = await supabase.from("users").select("id, name, email, role, manager_email");
       setUsers(usersData || []);
       const { data: typeData } = await supabase
         .from("leave_types")
@@ -69,6 +69,69 @@ export default function AdminPanel() {
     }
     fetchAll();
   }, []);
+
+  async function handleManagerChange(userId, newManagerEmail) {
+  setMessage("");
+  let token = "";
+  try {
+    const { data } = await supabase.auth.getSession();
+    token = data?.session?.access_token;
+  } catch {}
+  if (!token) {
+    setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
+    return;
+  }
+  try {
+    const res = await fetch("https://YOUR_PROJECT.supabase.co/functions/v1/assign-manager", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        manager_email: newManagerEmail,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) setMessage(data.error || "Yönetici atama başarısız.");
+    else setUsers(users => users.map(u => u.id === userId ? { ...u, manager_email: newManagerEmail } : u));
+  } catch (err) {
+    setMessage("Yönetici atama sırasında hata oluştu.");
+  }
+}
+
+async function handleRoleChange(userId, newRole) {
+  setMessage("");
+  let token = "";
+  try {
+    const { data } = await supabase.auth.getSession();
+    token = data?.session?.access_token;
+  } catch {}
+  if (!token) {
+    setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
+    return;
+  }
+  try {
+    const res = await fetch("https://YOUR_PROJECT.supabase.co/functions/v1/assign-role", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        role: newRole,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) setMessage(data.error || "Rol atama başarısız.");
+    else setUsers(users => users.map(u => u.id === userId ? { ...u, role: newRole } : u));
+  } catch (err) {
+    setMessage("Rol atama sırasında hata oluştu.");
+  }
+}
+
 
   function onEdit(user_id, field, value) {
     setEditing((prev) => ({
@@ -112,7 +175,7 @@ export default function AdminPanel() {
       setAdminNote("");
       return;
     }
-
+    
     try {
       const res = await fetch(EDGE_FUNCTION_URL, {
         method: "POST",
@@ -237,7 +300,7 @@ if (!annualType) {
         fontFamily: "'Urbanist', Arial, sans-serif",
       }}
     >
-      <h2 style={{ fontWeight: 700, marginBottom: 24, color: "#434344" }}>Yıllık İzin Bakiyeleri (Yönetici)</h2>
+      <h2 style={{ fontWeight: 700, marginBottom: 24, color: "#434344" }}>Kullanıcı Bilgileri (Yönetici)</h2>
 {message && (
   <div style={{
     color: "#468847",
@@ -253,6 +316,8 @@ if (!annualType) {
       <th style={th}>Kullanıcı</th>
       <th style={th}>E-posta</th>
       <th style={th}>Kalan</th>
+      <th style={th}>Yönetici</th>
+      <th style={th}>Rol</th>
       <th style={th}></th>
     </tr>
   </thead>
@@ -264,8 +329,11 @@ if (!annualType) {
 
       return (
         <tr key={user.id}>
+          {/* Kullanıcı adı */}
           <td style={td}>{user.name || user.email}</td>
+          {/* E-posta */}
           <td style={td}>{user.email}</td>
+          {/* Kalan izin günleri */}
           <td style={td}>
             <input
               type="number"
@@ -275,6 +343,36 @@ if (!annualType) {
               min={0}
             />
           </td>
+          {/* Yönetici seçimi */}
+          <td style={td}>
+            <select
+              value={user.manager_email || ""}
+              onChange={e => handleManagerChange(user.id, e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">Yok</option>
+              {users
+                .filter(u => u.email !== user.email)
+                .map(mgr => (
+                  <option key={mgr.email} value={mgr.email}>
+                    {mgr.name || mgr.email}
+                  </option>
+                ))}
+            </select>
+          </td>
+          {/* Rol seçimi */}
+          <td style={td}>
+            <select
+              value={user.role}
+              onChange={e => handleRoleChange(user.id, e.target.value)}
+              style={inputStyle}
+            >
+              <option value="user">Kullanıcı</option>
+              <option value="manager">Yönetici</option>
+              {/* admin assignment is backend only */}
+            </select>
+          </td>
+          {/* Kaydet butonu */}
           <td style={td}>
             <button
               style={{
@@ -317,6 +415,7 @@ if (!annualType) {
     })}
   </tbody>
 </table>
+
 
 
       {/* Confirmation Modal/Dialog */}

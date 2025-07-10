@@ -49,78 +49,104 @@ useEffect(() => {
 
 const managerTotal = pendingCount + approvedCount;
 
-  // --- LOGGED OUT LANDING ---
-  if (!isLoggedIn) {
-    return (
+// --- LOGGED OUT LANDING ---
+if (!isLoggedIn) {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#f8fbfd",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      }}
+    >
       <div
         style={{
-          minHeight: "100vh",
-          background: "#f8fbfd",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center"
+          background: "#fff",
+          padding: "48px 44px",
+          borderRadius: 22,
+          boxShadow: "0 0 32px #cde5f4",
+          textAlign: "center",
+          minWidth: 380,
+          maxWidth: 420
         }}
       >
-        <div
+        <div style={{ marginBottom: 14 }}>
+          <img
+            src="https://www.terralab.com.tr/wp-content/uploads/2023/10/terralab-logo-1.png"
+            alt="Terralab Logo"
+            style={{ width: 110, marginBottom: 8 }}
+          />
+        </div>
+        <div style={{ fontWeight: 900, fontSize: 28, letterSpacing: 1, color: "#F39200", marginBottom: 8 }}>
+          🏖️ İzin Uygulaması v2
+        </div>
+        <div style={{ color: "#434344", fontSize: 16, marginBottom: 22 }}>
+          Terralab kurum içi izin yönetim sistemi<br />
+          Giriş yapmak için Microsoft hesabınızı kullanınız.
+        </div>
+        <button
+          onClick={() =>
+            supabase.auth.signInWithOAuth({
+              provider: "azure",
+              options: { redirectTo: window.location.origin },
+            })
+          }
           style={{
             background: "#fff",
-            padding: "48px 44px",
-            borderRadius: 22,
-            boxShadow: "0 0 32px #cde5f4",
-            textAlign: "center",
-            minWidth: 380,
+            color: "#434344",
+            fontWeight: 700,
+            border: "1.5px solid #A8D2F2",
+            borderRadius: 12,
+            padding: "13px 0",
+            fontSize: 19,
+            cursor: "pointer",
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 12,
+            boxShadow: "0 2px 10px #cde5f445"
           }}
         >
-          <div style={{ marginBottom: 16 }}>
-            <img
-              src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg"
-              alt="Microsoft"
-              style={{ width: 64, height: 64, marginBottom: 10, borderRadius: 12 }}
-            />
+          <img
+            src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg"
+            alt="Microsoft"
+            style={{ width: 30, height: 30 }}
+          />
+          <span style={{ fontWeight: 800, fontSize: 19, letterSpacing: 0.3 }}>
+            Microsoft ile Giriş Yap
+          </span>
+        </button>
+        {/* Footer */}
+        <div style={{
+          marginTop: 28,
+          fontSize: 13,
+          color: "#818285",
+          borderTop: "1px solid #e5e5e5",
+          paddingTop: 12
+        }}>
+          <div>
+            Sorularınız veya geri bildiriminiz için:
+            <a href="mailto:izinapp-feedback@terralab.com.tr" style={{ color: "#0056b3", marginLeft: 5 }}>
+              izinapp-feedback@terralab.com.tr
+            </a>
           </div>
-          <div style={{ fontWeight: 900, fontSize: 32, letterSpacing: 1, color: "#F39200", marginBottom: 18 }}>
-            🏖️ İzin Uygulaması v2
+          <div>
+            © {new Date().getFullYear()}{" "}
+            <a href="https://www.terralab.com.tr" style={{ color: "#0056b3" }}>Terralab</a>.
           </div>
-          <div style={{ color: "#434344", fontSize: 17, marginBottom: 36 }}>
-            Kurumsal hesabınızla giriş yapın
+          <div>
+            Kullanıcı bilgileriniz gizli tutulur ve yalnızca şirket içi izin yönetimi için kullanılır.
+            <a href="/privacy.html" style={{ color: "#0056b3", marginLeft: 8 }}>Gizlilik Politikası</a>
           </div>
-          <button
-            onClick={() =>
-              supabase.auth.signInWithOAuth({
-                provider: "azure",
-                options: { redirectTo: window.location.origin },
-              })
-            }
-            style={{
-              background: "#fff",
-              color: "#434344",
-              fontWeight: 700,
-              border: "1.5px solid #A8D2F2",
-              borderRadius: 12,
-              padding: "13px 0",
-              fontSize: 19,
-              cursor: "pointer",
-              width: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 12,
-              boxShadow: "0 2px 10px #cde5f445"
-            }}
-          >
-            <img
-              src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg"
-              alt="Microsoft"
-              style={{ width: 30, height: 30 }}
-            />
-            <span style={{ fontWeight: 800, fontSize: 19, letterSpacing: 0.3 }}>
-              Microsoft ile Giriş Yap
-            </span>
-          </button>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
+
 
   // --- LOGGED IN: NORMAL APP ---
   return (

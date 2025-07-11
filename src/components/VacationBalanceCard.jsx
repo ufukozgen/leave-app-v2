@@ -135,22 +135,22 @@ return (
   <div
     className="vacation-card"
     style={{
-      padding: "22px 20px 16px 20px",
-      borderRadius: 18,
+      padding: "32px 30px 24px 30px",         // bigger padding
+      borderRadius: 26,                        // more rounded
       background: "#fff",
-      boxShadow: "0 2px 18px #cde5f422",
-      minWidth: 290,
-      maxWidth: 410,
+      boxShadow: "0 4px 22px #cde5f433",      // bigger, softer shadow
+      minWidth: 340,                          // increased min/max width
+      maxWidth: 480,
       margin: "0 auto",
-      border: `1.5px solid ${COLORS.lightBlue}`,
+      border: `2px solid ${COLORS.lightBlue}`,
     }}
   >
     <div
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 16,
-        minHeight: 70,
+        gap: 24,                               // more gap
+        minHeight: 96,                         // taller
       }}
     >
       {/* Profile Photo */}
@@ -159,30 +159,30 @@ return (
           src={profilePhoto}
           alt="Profil Fotoğrafı"
           style={{
-            width: 60,
-            height: 60,
+            width: 78,
+            height: 78,
             borderRadius: "50%",
             objectFit: "cover",
-            boxShadow: "0 1px 8px #0001",
+            boxShadow: "0 2px 12px #0001",
             background: "#eee",
-            border: "2px solid #CDE5F4",
+            border: "2.5px solid #CDE5F4",
             flexShrink: 0,
           }}
         />
       ) : (
         <div
           style={{
-            width: 60,
-            height: 60,
+            width: 78,
+            height: 78,
             borderRadius: "50%",
             background: "#E0653A33",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 28,
-            fontWeight: 800,
+            fontSize: 36,
+            fontWeight: 900,
             color: "#818285",
-            border: "2px solid #CDE5F4",
+            border: "2.5px solid #CDE5F4",
             flexShrink: 0,
           }}
         >
@@ -200,10 +200,10 @@ return (
         {showGreeting && (
           <div
             style={{
-              fontSize: 17,
+              fontSize: 21,
               fontWeight: 700,
               color: COLORS.orange,
-              marginBottom: 2,
+              marginBottom: 4,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -215,10 +215,10 @@ return (
         )}
         <div
           style={{
-            fontSize: 15,
-            fontWeight: 600,
+            fontSize: 18,
+            fontWeight: 700,
             color: COLORS.grayDark,
-            marginBottom: 0,
+            marginBottom: 2,
           }}
         >
           {title || "İzin Bakiyeniz"}
@@ -226,31 +226,29 @@ return (
       </div>
 
       {/* Stat: Kalan X gün */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginLeft: 6 }}>
-        <div style={{ fontSize: 12, color: COLORS.orange, fontWeight: 700, marginBottom: 2 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginLeft: 10 }}>
+        <div style={{ fontSize: 15, color: COLORS.orange, fontWeight: 700, marginBottom: 3 }}>
           Kalan
         </div>
         <div
           style={{
             background: COLORS.orange,
             color: "#fff",
-            borderRadius: 18,
-            padding: "8px 20px",
-            fontWeight: 800,
-            fontSize: 22,
-            minWidth: 65,
+            borderRadius: 24,
+            padding: "12px 32px",
+            fontWeight: 900,
+            fontSize: 28,
+            minWidth: 90,
             textAlign: "center",
-            boxShadow: "0 2px 8px #F3920020",
+            boxShadow: "0 3px 14px #F3920022",
           }}
         >
           {balance.remaining ?? 0}{" "}
-          <span style={{ fontSize: "0.93rem", fontWeight: 700 }}>gün</span>
+          <span style={{ fontSize: "1.1rem", fontWeight: 700 }}>gün</span>
         </div>
       </div>
     </div>
   </div>
 );
-
-
 
 }

@@ -138,6 +138,23 @@ serve(async (req) => {
       </ul>
       ${note ? `<p><b>Açıklama:</b> ${note}</p>` : ""}
       <p>Detaylı bilgi için uygulamayı kontrol edebilirsiniz.</p>
+
+            <br/>
+      <a href="https://leave-app-v2.vercel.app" 
+         style="
+           display:inline-block;
+           padding:10px 20px;
+           background:#F39200;
+           color:#fff;
+           border-radius:8px;
+           text-decoration:none;
+           font-weight:bold;
+           font-family:Calibri, Arial, sans-serif;
+           font-size:16px;
+           margin-top:10px;
+         ">
+         İzin Uygulamasına Git
+      </a>
     `;
 
     // Send to employee
@@ -160,6 +177,23 @@ serve(async (req) => {
         </ul>
         ${note ? `<p><b>Açıklama:</b> ${note}</p>` : ""}
         <p>Detaylı bilgi için uygulamayı kontrol edebilirsiniz.</p>
+
+              <br/>
+      <a href="https://leave-app-v2.vercel.app" 
+         style="
+           display:inline-block;
+           padding:10px 20px;
+           background:#F39200;
+           color:#fff;
+           border-radius:8px;
+           text-decoration:none;
+           font-weight:bold;
+           font-family:Calibri, Arial, sans-serif;
+           font-size:16px;
+           margin-top:10px;
+         ">
+         İzin Uygulamasına Git
+      </a>
       `;
       await sendGraphEmail({
         to: manager.email,

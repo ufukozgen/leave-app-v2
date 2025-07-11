@@ -140,6 +140,23 @@ serve(async (req) => {
           </ul>
           ${rejection_reason ? `<p><b>Red Nedeni:</b> ${rejection_reason}</p>` : ""}
           <p>Detaylar için yöneticinizle görüşebilirsiniz.</p>
+
+                <br/>
+      <a href="https://leave-app-v2.vercel.app" 
+         style="
+           display:inline-block;
+           padding:10px 20px;
+           background:#F39200;
+           color:#fff;
+           border-radius:8px;
+           text-decoration:none;
+           font-weight:bold;
+           font-family:Calibri, Arial, sans-serif;
+           font-size:16px;
+           margin-top:10px;
+         ">
+         İzin Uygulamasına Git
+      </a>
         `
       });
     }

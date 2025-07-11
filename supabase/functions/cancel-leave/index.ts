@@ -158,6 +158,23 @@ serve(async (req) => {
             <li>Gün: ${leave.days}</li>
           </ul>
           <p>Bilginize.</p>
+                
+          <br/>
+      <a href="https://leave-app-v2.vercel.app" 
+         style="
+           display:inline-block;
+           padding:10px 20px;
+           background:#F39200;
+           color:#fff;
+           border-radius:8px;
+           text-decoration:none;
+           font-weight:bold;
+           font-family:Calibri, Arial, sans-serif;
+           font-size:16px;
+           margin-top:10px;
+         ">
+         İzin Uygulamasına Git
+      </a>
         `
       });
     }
@@ -176,6 +193,23 @@ if (leave.status === "Approved" && manager) {
         <li>Gün: ${leave.days}</li>
       </ul>
       <p>Bilginize.</p>
+
+            <br/>
+      <a href="https://leave-app-v2.vercel.app" 
+         style="
+           display:inline-block;
+           padding:10px 20px;
+           background:#F39200;
+           color:#fff;
+           border-radius:8px;
+           text-decoration:none;
+           font-weight:bold;
+           font-family:Calibri, Arial, sans-serif;
+           font-size:16px;
+           margin-top:10px;
+         ">
+         İzin Uygulamasına Git
+      </a>
     `
   });
 }

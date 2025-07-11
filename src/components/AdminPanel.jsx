@@ -558,53 +558,54 @@ export default function AdminPanel() {
           </div>
         </div>
       )}
-      <div style={{ margin: "20px 0", padding: 12, background: "#F8FBFD", borderRadius: 7 }}>
-        <label style={{ fontSize: 17, fontWeight: 600, display: "flex", alignItems: "center", gap: 16 }}>
-          <span>
-            Kullanıcılar geçmiş tarihler için izin talep edebilsin (retroaktif izin)
-          </span>
-          <div
-            onClick={handleToggleRetroactive}
-            style={{
-              width: 48,
-              height: 26,
-              borderRadius: 18,
-              background: allowRetroactiveLeave ? "#74B4DE" : "#E0653A",
-              position: "relative",
-              cursor: "pointer",
-              transition: "background 0.25s",
-              boxShadow: allowRetroactiveLeave ? "0 0 6px #A8D2F2" : "0 0 6px #E0653A44",
-              border: allowRetroactiveLeave ? "1.5px solid #74B4DE" : "1.5px solid #E0653A"
-            }}
-            tabIndex={0}
-            role="button"
-            aria-pressed={allowRetroactiveLeave}
-            onKeyDown={e => { if (e.key === " " || e.key === "Enter") handleToggleRetroactive(); }}
-          >
-            <span
-              style={{
-                position: "absolute",
-                left: allowRetroactiveLeave ? 24 : 2,
-                top: 2,
-                width: 22,
-                height: 22,
-                borderRadius: "50%",
-                background: "#fff",
-                boxShadow: "0 1px 4px #8883",
-                transition: "left 0.25s"
-              }}
-            />
-          </div>
-          <span style={{
-            fontWeight: 600,
-            color: allowRetroactiveLeave ? "#1C6234" : "#E0653A",
-            marginLeft: 10,
-            minWidth: 68
-          }}>
-            {allowRetroactiveLeave ? "Açık" : "Kapalı"}
-          </span>
-        </label>
-      </div>
+<div style={{ margin: "20px 0", padding: 12, background: "#F8FBFD", borderRadius: 7 }}>
+  <label style={{ fontSize: 17, fontWeight: 600, display: "flex", alignItems: "center", gap: 16 }}>
+    <span>
+      Kullanıcılar geçmiş tarihler için izin talep edebilsin (retroaktif izin)
+    </span>
+    <div
+      onClick={handleToggleRetroactive}
+      style={{
+        width: 48,
+        height: 26,
+        borderRadius: 18,
+        background: allowRetroactiveLeave ? "#E0653A" : "#74B4DE", // Açık=red, Kapalı=blue
+        position: "relative",
+        cursor: "pointer",
+        transition: "background 0.25s",
+        boxShadow: allowRetroactiveLeave ? "0 0 6px #E0653A44" : "0 0 6px #A8D2F2",
+        border: allowRetroactiveLeave ? "1.5px solid #E0653A" : "1.5px solid #74B4DE"
+      }}
+      tabIndex={0}
+      role="button"
+      aria-pressed={allowRetroactiveLeave}
+      onKeyDown={e => { if (e.key === " " || e.key === "Enter") handleToggleRetroactive(); }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          left: allowRetroactiveLeave ? 24 : 2,
+          top: 2,
+          width: 22,
+          height: 22,
+          borderRadius: "50%",
+          background: "#fff",
+          boxShadow: "0 1px 4px #8883",
+          transition: "left 0.25s"
+        }}
+      />
+    </div>
+    <span style={{
+      fontWeight: 600,
+      color: allowRetroactiveLeave ? "#E0653A" : "#74B4DE", // Açık=red, Kapalı=blue
+      marginLeft: 10,
+      minWidth: 68
+    }}>
+      {allowRetroactiveLeave ? "Açık" : "Kapalı"}
+    </span>
+  </label>
+</div>
+
 
       {/* HOLIDAY MANAGEMENT */}
       <h2 style={{ color: "#F39200", marginTop: 42, marginBottom: 10, fontWeight: 700 }}>

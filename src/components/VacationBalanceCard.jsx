@@ -16,7 +16,7 @@ const COLORS = {
 // Your deployed Edge Function URL for fetching profile photos
 const PROFILE_PHOTO_FN_URL = "https://sxinuiwawpruwzxfcgpc.supabase.co/functions/v1/get-profile-photo";
 
-export default function VacationBalanceCard({ userId, email, launchDate, title, showGreeting = true }) {
+export default function VacationBalanceCard({ userId, email, launchDate, title, subTitle, showGreeting = true }) {
   const [balance, setBalance] = useState(null);
   const [user, setUser] = useState(null);
   const [resolvedUserId, setResolvedUserId] = useState(userId || null);
@@ -199,45 +199,72 @@ return (
       <div style={{ marginBottom: 2 }}>
   {showGreeting && (
     <>
-      <div
-        style={{
-          fontSize: 21,
-          fontWeight: 700,
-          color: COLORS.grayDark,
-          lineHeight: 1.20,
-        }}
-      >
+      <div style={{
+        fontSize: 21,
+        fontWeight: 700,
+        color: COLORS.orange,
+        lineHeight: 1.15,
+      }}>
         Merhaba,
       </div>
-      <div
-        style={{
-          fontSize: 21,
-          fontWeight: 700,
-          color: COLORS.orange,
-          lineHeight: 1.15,
-          marginBottom: 2,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          maxWidth: 160 // adjust if needed
-        }}
-        title={user?.name}
-      >
+      <div style={{
+        fontSize: 21,
+        fontWeight: 700,
+        color: COLORS.orange,
+        lineHeight: 1.15,
+        marginBottom: 2,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        maxWidth: 160,
+      }} title={user?.name}>
         {user?.name}
+      </div>
+      <div style={{
+        fontSize: 18,
+        fontWeight: 700,
+        color: COLORS.grayDark,
+        marginBottom: 2,
+      }}>
+        {title || "İzin Bakiyeniz"}
       </div>
     </>
   )}
-  <div
-    style={{
+
+  {!showGreeting && subTitle && (
+    <>
+      <div style={{
+        fontSize: 20,
+        fontWeight: 600,
+        color: COLORS.orange,
+        lineHeight: 1.1,
+        marginBottom: 1,
+      }}>
+        {subTitle}
+      </div>
+      <div style={{
+        fontSize: 18,
+        fontWeight: 700,
+        color: COLORS.grayDark,
+        marginBottom: 2,
+      }}>
+        {title || "İzin Bakiyeniz"}
+      </div>
+    </>
+  )}
+
+  {!showGreeting && !subTitle && (
+    <div style={{
       fontSize: 18,
       fontWeight: 700,
       color: COLORS.grayDark,
       marginBottom: 2,
-    }}
-  >
-    {title || "İzin Bakiyeniz"}
-  </div>
+    }}>
+      {title || "İzin Bakiyeniz"}
+    </div>
+  )}
 </div>
+
 
 
       {/* Stat: Kalan X gün */}

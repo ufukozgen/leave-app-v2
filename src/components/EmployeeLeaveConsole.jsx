@@ -119,6 +119,7 @@ export default function EmployeeLeaveConsole({ managerEmail }) {
                     email={selectedUser.email}
                     balance={vacationBalance}
                     title={`${getEmailPrefix(selectedUser.email)} İzin Bakiyesi`}
+                    subTitle={getEmailPrefix(selectedUser.email)}
                     launchDate={launchDate}
                     showGreeting={false}
                     isManagerView={true}

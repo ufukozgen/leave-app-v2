@@ -315,7 +315,7 @@ if (!response.ok) {
               }))
             }
             openToDate={form.start_date || new Date()}
-            dateFormat="yyyy-MM-dd"
+            dateFormat="dd/MM/yyyy"
             placeholderText="Son izin gününü seçin"
             required
             withPortal

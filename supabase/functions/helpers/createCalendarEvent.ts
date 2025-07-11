@@ -39,11 +39,10 @@ export async function createCalendarEvent({
 
   // --- TIME LOGIC BLOCK ---
   let eventTimes;
-  if (leave.duration_type === "full") {
-    // All-day event, end date is exclusive for Outlook
-    eventTimes = {
-      start: { date: leave.start_date },
-      end: { date: addOneDay(leave.end_date) }
+if (leave.duration_type === "full") {
+  eventTimes = {
+    start: { dateTime: leave.start_date + "T00:00:00", timeZone: "Europe/Istanbul" },
+    end:   { dateTime: addOneDay(leave.end_date) + "T00:00:00", timeZone: "Europe/Istanbul" }
     };
   } else if (leave.duration_type === "half-am") {
     eventTimes = {
@@ -83,6 +82,7 @@ export async function createCalendarEvent({
       }
     ]
   };
+  console.log("Event body:", JSON.stringify(eventBody, null, 2));
 
   const resp = await fetch(url, {
     method: "POST",

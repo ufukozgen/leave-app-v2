@@ -270,11 +270,13 @@ if (!response.ok) {
     }
   }
 
+  const [showHistory, setShowHistory] = useState(false);
+  const latestRelease = RELEASES[0];
+
   if (loading) return <div style={{ fontFamily: "Urbanist" }}>Yükleniyor...</div>;
   if (!dbUser) return <div style={{ fontFamily: "Urbanist" }}>Kullanıcı profili yüklenemedi.</div>;
 
-  const [showHistory, setShowHistory] = useState(false);
-  const latestRelease = RELEASES[0];
+
 
   return (
     <>

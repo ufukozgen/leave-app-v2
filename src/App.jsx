@@ -284,7 +284,7 @@ if (!isLoggedIn) {
             >
               {(tab === "request" || tab === "list") && (
                 <div className="main-content">
-                  {tab === "request" && <LeaveAppContent user={dbUser} />}
+                  {tab === "request" && <LeaveRequestForm />}
                   {tab === "list" && <LeaveRequestList />}
                 </div>
               )}

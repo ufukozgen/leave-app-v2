@@ -324,6 +324,14 @@ const sortedRequests = [...requests].sort((a, b) => {
   return sortAsc ? valA - valB : valB - valA;
 });
 
+function handleSort(field) {
+  if (sortField === field) {
+    setSortAsc((asc) => !asc);
+  } else {
+    setSortField(field);
+    setSortAsc(true);
+  }
+}
 
   // ---- Render ----
   return (

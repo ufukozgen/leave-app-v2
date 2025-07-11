@@ -390,18 +390,18 @@ function handleSort(field) {
           }}>
             <thead>
               <tr style={{ background: "#F39200", color: "#fff" }}>
-                <th style={{ ...th, width: 90 }}>Kullanıcı</th>
+                <SortableHeader label="Kullanıcı" field="email" />
                 <SortableHeader label="Başlangıç" field="start_date" />
                 <SortableHeader label="Bitiş" field="end_date" />
                 <SortableHeader label="Gün" field="days" />
                 <SortableHeader label="Lokasyon" field="location" />
                 <SortableHeader label="Not" field="note" />
                 <SortableHeader label="Talep" field="request_date" />
-
-                <th style={{ ...th, width: 38, textAlign: "center", whiteSpace: "nowrap", fontSize: 13 }}>Durum</th>
+                <th style={{ ...th, width: 38, textAlign: "center", whiteSpace: "nowrap" }}>Durum</th>
                 <th style={{ ...th, width: 44, textAlign: "center" }}>İşlem</th>
               </tr>
             </thead>
+
             <tbody>
               {sortedRequests.map(req => (
                 <tr key={req.id} style={{

@@ -5,7 +5,11 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { addDays, isWeekend, format, isAfter } from "date-fns";
 import { tr } from "date-fns/locale";
-import { APP_VERSION, RELEASE_NOTES } from "../version";
+import { RELEASES } from "../version";
+import { motion, AnimatePresence } from "framer-motion";
+
+const APP_VERSION = RELEASES[0].version;
+
 
 export default function LeaveRequestForm() {
   const { dbUser, loading } = useUser();
@@ -269,6 +273,9 @@ if (!response.ok) {
   if (loading) return <div style={{ fontFamily: "Urbanist" }}>Yükleniyor...</div>;
   if (!dbUser) return <div style={{ fontFamily: "Urbanist" }}>Kullanıcı profili yüklenemedi.</div>;
 
+  const [showHistory, setShowHistory] = useState(false);
+  const latestRelease = RELEASES[0];
+
   return (
     <>
       <h2 style={{ fontWeight: 700, marginBottom: 24, color: "#434344" }}>İzin Talep Et</h2>
@@ -345,15 +352,11 @@ if (!response.ok) {
             </div>
           )}
         <div style={{ marginBottom: 16 }}>
-          <label>İzin sonrası işe başlama tarihi:</label><br />
-          <input
-            type="date"
-            value={form.return_date}
-            dateFormat="dd/MM/yyyy"
-            readOnly
-            style={{ ...inputStyle, background: "#f8f8f8", color: "#434344", cursor: "default" }}
-          />
-        </div>
+  <label>İzin sonrası işe başlama tarihi:</label><br />
+  <span style={{ ...inputStyle, display: "inline-block", background: "#f8f8f8", color: "#434344" }}>
+    {form.return_date ? format(new Date(form.return_date), "dd/MM/yyyy") : ""}
+  </span>
+</div>
         <div style={{ marginBottom: 16 }}>
           <label>Lokasyon:</label><br />
           <input
@@ -424,22 +427,80 @@ if (!response.ok) {
         </div>
         
       )}
-    <div style={{
-  background: "#F8FBFD",
-  border: "1px solid #CDE5F4",
-  borderRadius: 10,
-  padding: "20px",
-  marginTop: 20
-}}>
-  <h3 style={{ marginBottom: 10, fontSize: 18, color: "#434344" }}>
-    Sürüm Notları – {APP_VERSION}
-  </h3>
-  <ul style={{ paddingLeft: 20, margin: 0 }}>
-    {RELEASE_NOTES.map((note, i) => (
-      <li key={i} style={{ marginBottom: 6 }}>{note}</li>
-    ))}
-  </ul>
+    <div
+  style={{
+    margin: "28px 0",
+    background: "#F8FBFD",
+    border: "1px solid #CDE5F4",
+    borderRadius: 12,
+    padding: 22,
+    maxWidth: 420,
+    boxShadow: "0 2px 16px #a8d2f433",
+    fontSize: 15,
+  }}
+>
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      cursor: "pointer",
+      gap: 10,
+      userSelect: "none",
+      fontWeight: 800,
+      fontSize: 16,
+      color: "#F39200",
+    }}
+    onClick={() => setShowHistory(s => !s)}
+    tabIndex={0}
+    onKeyDown={e => { if (e.key === " " || e.key === "Enter") setShowHistory(s => !s); }}
+    aria-expanded={showHistory}
+    aria-controls="release-history"
+  >
+    <span>
+      Güncel Sürüm: {latestRelease.version}
+    </span>
+    <span style={{
+      marginLeft: "auto",
+      fontSize: 22,
+      color: "#A8D2F2",
+      transform: showHistory ? "rotate(90deg)" : "rotate(0deg)",
+      transition: "transform 0.2s"
+    }}>▶</span>
+  </div>
+
+  <AnimatePresence initial={false}>
+    {showHistory && (
+      <motion.div
+        id="release-history"
+        initial={{ height: 0, opacity: 0 }}
+        animate={{ height: "auto", opacity: 1 }}
+        exit={{ height: 0, opacity: 0 }}
+        style={{
+          overflow: "hidden",
+          marginTop: 10
+        }}
+        transition={{ duration: 0.28, ease: [0.43, 0.13, 0.23, 0.96] }}
+      >
+        <div>
+          {RELEASES.map(r => (
+            <div key={r.version} style={{ marginBottom: 12 }}>
+              <b style={{ color: "#F39200" }}>
+                {r.version}
+                <span style={{ color: "#818285", fontWeight: 400, fontSize: 13, marginLeft: 6 }}>
+                  ({r.date})
+                </span>
+              </b>
+              <ul style={{ marginLeft: 18, marginTop: 2 }}>
+                {r.notes.map((n, i) => <li key={i}>{n}</li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    )}
+  </AnimatePresence>
 </div>
+
 </>
   );
 }

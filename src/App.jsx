@@ -241,10 +241,13 @@ if (!isLoggedIn) {
           <TabButton active={tab === "request"} onClick={() => setTab("request")}>İzin Talebi</TabButton>
           <TabButton active={tab === "list"} onClick={() => setTab("list")}>İzin Taleplerim</TabButton>
           {isManager && (
-            <TabButton active={tab === "manager"} onClick={() => setTab("manager")} badge={managerTotal}>
-              Yönetici
-            </TabButton>
-          )}
+  <TabButton active={tab === "manager"} onClick={() => setTab("manager")}>
+    Yönetici
+    <CountBadge color="#F0B357" count={pendingCount} />
+    <CountBadge color="#50B881" count={approvedCount} />
+  </TabButton>
+)}
+
           {isManager && (
             <TabButton
               active={tab === "employee-console"}
@@ -305,7 +308,36 @@ if (!isLoggedIn) {
   );
 }
 
-function TabButton({ active, children, badge, ...props }) {
+function CountBadge({ color, count }) {
+  if (!count) return null;
+  return (
+    <span
+      style={{
+        minWidth: 26,
+        height: 22,
+        background: color,
+        color: "#fff",
+        fontWeight: 900,
+        borderRadius: 8,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 15,
+        padding: "0 7px",
+        marginLeft: 7,
+        marginRight: 3,
+        boxShadow: "0 1px 4px #8883",
+        letterSpacing: 1,
+        verticalAlign: "middle",
+      }}
+    >
+      {count}
+    </span>
+  );
+}
+
+
+function TabButton({ active, children, ...props }) {
   return (
     <button
       {...props}
@@ -326,28 +358,7 @@ function TabButton({ active, children, badge, ...props }) {
       }}
     >
       {children}
-      {badge > 0 && (
-        <span
-          style={{
-            position: "absolute",
-            top: 7,
-            right: 18,
-            minWidth: 24,
-            height: 24,
-            background: "#E0653A",
-            color: "#fff",
-            fontWeight: 900,
-            borderRadius: "50%",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 15,
-            boxShadow: "0 1px 4px #E0653A44",
-          }}
-        >
-          {badge}
-        </span>
-      )}
     </button>
   );
 }
+

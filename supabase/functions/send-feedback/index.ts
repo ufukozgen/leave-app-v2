@@ -3,12 +3,23 @@ import { sendGraphEmail } from "../helpers/sendGraphEmail.ts";
 
 const FEEDBACK_TO = Deno.env.get("FEEDBACK_TO");
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://leave-app-v2.vercel.app",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+// CORS headers for browser support
+const allowedOrigins = [
+  "https://leave-app-v2.vercel.app",
+  "http://localhost:5173",
+];
+function getCORSHeaders(origin) {
+  return {
+    "Access-Control-Allow-Origin": allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  };
+}
+
 
 serve(async (req) => {
+      const origin = req.headers.get("origin") || "";
+  const corsHeaders = getCORSHeaders(origin);
   if (req.method === "OPTIONS") {
     // CORS preflight
     return new Response("ok", { headers: corsHeaders });

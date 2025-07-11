@@ -42,7 +42,7 @@ serve(async (req) => {
     // İzin kaydını al (tüm gerekli alanlar ile)
     const { data: leave, error: leaveError } = await supabase
       .from("leave_requests")
-      .select("id, user_id, manager_email, status, start_date, end_date, days, location, note")
+      .select("id, user_id, manager_email, status, start_date, end_date, days, location, note, duration_type")
       .eq("id", request_id)
       .maybeSingle();
 
@@ -139,7 +139,8 @@ serve(async (req) => {
         leave: {
           start_date: leave.start_date,
           end_date: leave.end_date,
-          note: leave.note
+          duration_type: leave.duration_type,
+          note: leave.note          
         }
       });
       const eventId = event.id;

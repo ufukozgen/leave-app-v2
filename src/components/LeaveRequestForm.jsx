@@ -4,6 +4,7 @@ import { useUser } from "./UserContext";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { addDays, isWeekend, format, isAfter } from "date-fns";
+import { tr } from "date-fns/locale";
 
 export default function LeaveRequestForm() {
   const { dbUser, loading } = useUser();
@@ -286,11 +287,14 @@ if (!response.ok) {
               setForm(f => ({ ...form, start_date: date }))
             }
              filterDate={filterDate}
-             dateFormat="yyyy-MM-dd"
+             dateFormat="dd/MM/yyyy"
             placeholderText="İlk izin gününü seçin"
             required
             withPortal
             style={inputStyle}
+            locale={tr}
+            showWeekNumbers
+            weekLabel="Hf"
           />
         </div>
         <div style={{ marginBottom: 16 }}>
@@ -316,7 +320,10 @@ if (!response.ok) {
             required
             withPortal
             style={inputStyle}
-          />
+            locale={tr}
+            showWeekNumbers
+            weekLabel="Hf"
+            />
         </div>
         {form.start_date &&
           form.end_date &&

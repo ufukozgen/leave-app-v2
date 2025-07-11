@@ -54,6 +54,7 @@ serve(async (req) => {
       leave_type_id: body.leave_type_id,
       status: "Pending",
       request_date: new Date().toISOString(),
+      duration_type: body.duration_type,
     };
 
     // Insert into leave_requests

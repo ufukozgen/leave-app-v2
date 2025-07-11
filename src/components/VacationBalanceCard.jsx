@@ -139,8 +139,8 @@ return (
       borderRadius: 26,                        // more rounded
       background: "#fff",
       boxShadow: "0 4px 22px #cde5f433",      // bigger, softer shadow
-      minWidth: 480,                          // increased min/max width
-      maxWidth: 600,
+      minWidth: 400,                          // increased min/max width
+      maxWidth: 480,
       margin: "0 auto",
       border: `2px solid ${COLORS.lightBlue}`,
     }}

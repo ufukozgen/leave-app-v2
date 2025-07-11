@@ -5,6 +5,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { addDays, isWeekend, format, isAfter } from "date-fns";
 import { tr } from "date-fns/locale";
+import { APP_VERSION, RELEASE_NOTES } from "../version";
 
 export default function LeaveRequestForm() {
   const { dbUser, loading } = useUser();
@@ -421,8 +422,25 @@ if (!response.ok) {
         >
           {result}
         </div>
+        
       )}
-    </>
+    <div style={{
+  background: "#F8FBFD",
+  border: "1px solid #CDE5F4",
+  borderRadius: 10,
+  padding: "20px",
+  marginTop: 20
+}}>
+  <h3 style={{ marginBottom: 10, fontSize: 18, color: "#434344" }}>
+    Sürüm Notları – {APP_VERSION}
+  </h3>
+  <ul style={{ paddingLeft: 20, margin: 0 }}>
+    {RELEASE_NOTES.map((note, i) => (
+      <li key={i} style={{ marginBottom: 6 }}>{note}</li>
+    ))}
+  </ul>
+</div>
+</>
   );
 }
 

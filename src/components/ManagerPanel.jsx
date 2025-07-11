@@ -107,7 +107,8 @@ function statusDot(color, label, rowId) {
   const [tab, setTab] = useState("pending");
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  // processing = {id: req.id, type: "approve" | "reject" | "deduct" | "reverse"}
+  const [sortField, setSortField] = useState("start_date");
+  const [sortAsc, setSortAsc] = useState(true);
   const [processing, setProcessing] = useState(null);
   const [message, setMessage] = useState("");
 
@@ -265,6 +266,19 @@ useEffect(() => {
       </button>
     );
   }
+function SortableHeader({ label, field }) {
+  const isActive = sortField === field;
+  const arrow = isActive ? (sortAsc ? "▲" : "▼") : "";
+
+  return (
+    <th
+      onClick={() => handleSort(field)}
+      style={{ ...th, cursor: "pointer", userSelect: "none" }}
+    >
+      {label} {arrow}
+    </th>
+  );
+}
 
   // Spinner Component
   function Spinner() {
@@ -296,6 +310,20 @@ useEffect(() => {
       </span>
     );
   }
+
+const sortedRequests = [...requests].sort((a, b) => {
+  const valA = a[sortField];
+  const valB = b[sortField];
+
+  if (!valA || !valB) return 0;
+
+  if (typeof valA === "string") {
+    return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+  }
+
+  return sortAsc ? valA - valB : valB - valA;
+});
+
 
   // ---- Render ----
   return (
@@ -355,17 +383,19 @@ useEffect(() => {
             <thead>
               <tr style={{ background: "#F39200", color: "#fff" }}>
                 <th style={{ ...th, width: 90 }}>Kullanıcı</th>
-                <th style={{ ...th, width: 76 }}>Başlangıç</th>
-                <th style={{ ...th, width: 76 }}>Bitiş</th>
-                <th style={{ ...th, width: 34, textAlign: "center" }}>Gün</th>
-                <th style={{ ...th, width: 68 }}>Lokasyon</th>
-                <th style={{ ...th, width: 68 }}>Not</th>
+                <SortableHeader label="Başlangıç" field="start_date" />
+                <SortableHeader label="Bitiş" field="end_date" />
+                <SortableHeader label="Gün" field="days" />
+                <SortableHeader label="Lokasyon" field="location" />
+                <SortableHeader label="Not" field="note" />
+                <SortableHeader label="Talep" field="request_date" />
+
                 <th style={{ ...th, width: 38, textAlign: "center", whiteSpace: "nowrap", fontSize: 13 }}>Durum</th>
                 <th style={{ ...th, width: 44, textAlign: "center" }}>İşlem</th>
               </tr>
             </thead>
             <tbody>
-              {requests.map(req => (
+              {sortedRequests.map(req => (
                 <tr key={req.id} style={{
                   background: req.status === "Cancelled" ? "#f8f8f8" : "#fff",
                   borderBottom: "1px solid #eee",
@@ -398,7 +428,10 @@ useEffect(() => {
                   >
                     {ellipsis(req.note, 16)}
                   </td>
-                  <td style={{ ...td, textAlign: "center", position: "relative" }}>
+                  <td style={{ ...td, whiteSpace: "nowrap" }}>
+                      {formatDateTR(req.request_date)}
+                    </td>
+                    <td style={{ ...td, textAlign: "center", position: "relative" }}>
                     {statusDot(
                       statusColors[req.status] || "#818285",
                       statusLabelsTr[req.status] || req.status,

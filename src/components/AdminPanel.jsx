@@ -352,7 +352,7 @@ export default function AdminPanel() {
           </tr>
         </thead>
         <tbody>
-  {users.map(user => {
+  {[...users].sort((a, b) => a.email.localeCompare(b.email)).map(user => {
     const bal = getBal(user.id);
     const key = (field) => `${user.id}_${field}`;
     const remaining = editing[key("remaining")] ?? bal.remaining ?? "";
@@ -401,13 +401,15 @@ export default function AdminPanel() {
               style={inputStyle}
             >
               <option value="">Yok</option>
-              {users
+              {[...users]
                 .filter(u => u.email !== user.email)
+                .sort((a, b) => a.email.localeCompare(b.email))
                 .map(mgr => (
                   <option key={mgr.email} value={mgr.email}>
                     {mgr.name || mgr.email}
                   </option>
-                ))}
+              ))}
+
             </select>
           )}
         </td>

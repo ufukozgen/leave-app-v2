@@ -203,7 +203,7 @@ return (
         style={{
           fontSize: 21,
           fontWeight: 700,
-          color: COLORS.orange,
+          color: COLORS.grayDark,
           lineHeight: 1.15,
         }}
       >

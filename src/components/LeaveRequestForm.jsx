@@ -348,6 +348,7 @@ if (!response.ok) {
           <input
             type="text"
             value={form.return_date}
+            dateFormat="dd/MM/yyyy"
             readOnly
             style={{ ...inputStyle, background: "#f8f8f8", color: "#434344", cursor: "default" }}
           />

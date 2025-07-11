@@ -118,7 +118,7 @@ export default function EmployeeLeaveConsole({ managerEmail }) {
                 <VacationBalanceCard
                     email={selectedUser.email}
                     balance={vacationBalance}
-                    title={`${getEmailPrefix(selectedUser.email)} İzin Bakiyesi`}
+                    title="İzin Bakiyesi"
                     subTitle={getEmailPrefix(selectedUser.email)}
                     launchDate={launchDate}
                     showGreeting={false}

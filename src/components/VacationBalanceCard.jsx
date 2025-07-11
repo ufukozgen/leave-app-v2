@@ -202,13 +202,13 @@ return (
       <div style={{
         fontSize: 21,
         fontWeight: 700,
-        color: COLORS.orange,
-        lineHeight: 1.15,
+        color: COLORS.grayDark,
+        lineHeight: 1.25,
       }}>
         Merhaba,
       </div>
       <div style={{
-        fontSize: 21,
+        fontSize: 24,
         fontWeight: 700,
         color: COLORS.orange,
         lineHeight: 1.15,

@@ -198,31 +198,46 @@ return (
       {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>
         {showGreeting && (
-          <div
-            style={{
-              fontSize: 21,
-              fontWeight: 700,
-              color: COLORS.orange,
-              marginBottom: 4,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              lineHeight: 1.2,
-            }}
-          >
-            Merhaba{user?.name ? `, ${user.name}` : ""}!
-          </div>
-        )}
-        <div
-          style={{
-            fontSize: 18,
-            fontWeight: 700,
-            color: COLORS.grayDark,
-            marginBottom: 2,
-          }}
-        >
-          {title || "İzin Bakiyeniz"}
-        </div>
+  <div style={{ marginBottom: 2 }}>
+    <div
+      style={{
+        fontSize: 21,
+        fontWeight: 700,
+        color: COLORS.orange,
+        lineHeight: 1.15,
+      }}
+    >
+      Merhaba,
+    </div>
+    <div
+      style={{
+        fontSize: 21,
+        fontWeight: 700,
+        color: COLORS.orange,
+        lineHeight: 1.15,
+        marginBottom: 2,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        maxWidth: 160 // adjust for your layout!
+      }}
+      title={user?.name}
+    >
+      {user?.name}
+    </div>
+    <div
+      style={{
+        fontSize: 18,
+        fontWeight: 700,
+        color: COLORS.grayDark,
+        marginBottom: 2,
+      }}
+    >
+      {title || "İzin Bakiyeniz"}
+    </div>
+  </div>
+)}
+
       </div>
 
       {/* Stat: Kalan X gün */}

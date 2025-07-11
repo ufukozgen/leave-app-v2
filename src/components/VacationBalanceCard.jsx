@@ -196,49 +196,49 @@ return (
       )}
 
       {/* Info */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {showGreeting && (
-  <div style={{ marginBottom: 2 }}>
-    <div
-      style={{
-        fontSize: 21,
-        fontWeight: 700,
-        color: COLORS.grayDark,
-        lineHeight: 1.20,
-      }}
-    >
-      Merhaba,
-    </div>
-    <div
-      style={{
-        fontSize: 21,
-        fontWeight: 700,
-        color: COLORS.orange,
-        lineHeight: 1.15,
-        marginBottom: 2,
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        maxWidth: 160 // adjust for your layout!
-      }}
-      title={user?.name}
-    >
-      {user?.name}
-    </div>
-    <div
-      style={{
-        fontSize: 18,
-        fontWeight: 700,
-        color: COLORS.grayDark,
-        marginBottom: 2,
-      }}
-    >
-      {title || "İzin Bakiyeniz"}
-    </div>
-  </div>
-)}
-
+      <div style={{ marginBottom: 2 }}>
+  {showGreeting && (
+    <>
+      <div
+        style={{
+          fontSize: 21,
+          fontWeight: 700,
+          color: COLORS.orange,
+          lineHeight: 1.15,
+        }}
+      >
+        Merhaba,
       </div>
+      <div
+        style={{
+          fontSize: 21,
+          fontWeight: 700,
+          color: COLORS.orange,
+          lineHeight: 1.15,
+          marginBottom: 2,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          maxWidth: 160 // adjust if needed
+        }}
+        title={user?.name}
+      >
+        {user?.name}
+      </div>
+    </>
+  )}
+  <div
+    style={{
+      fontSize: 18,
+      fontWeight: 700,
+      color: COLORS.grayDark,
+      marginBottom: 2,
+    }}
+  >
+    {title || "İzin Bakiyeniz"}
+  </div>
+</div>
+
 
       {/* Stat: Kalan X gün */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginLeft: 10 }}>

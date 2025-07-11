@@ -204,7 +204,7 @@ return (
           fontSize: 21,
           fontWeight: 700,
           color: COLORS.grayDark,
-          lineHeight: 1.15,
+          lineHeight: 1.20,
         }}
       >
         Merhaba,

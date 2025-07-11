@@ -346,7 +346,7 @@ if (!response.ok) {
         <div style={{ marginBottom: 16 }}>
           <label>İzin sonrası işe başlama tarihi:</label><br />
           <input
-            type="text"
+            type="date"
             value={form.return_date}
             dateFormat="dd/MM/yyyy"
             readOnly

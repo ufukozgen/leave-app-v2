@@ -1,9 +1,23 @@
-// src/releases.js
+// src/version.js
 
 export const RELEASES = [
   {
+    version: "v2.0.3",
+    date: "2025-07-14",
+    notes: [
+      "🆕 AdminPanel'de 'Baş Harfler' (İlk.) sütunu eklendi ve satır içi düzenleme desteği (ilk iki harf büyük, üçüncü harf küçük/büyük, benzersizlik kontrolü, Türkçe karakter desteği)",
+      "👤 Kullanıcı adı ve baş harfler aynı hücrede gösteriliyor; tablo daha kompakt ve kaydırmasız",
+      "💾 İşlem butonları ikonlara dönüştürüldü (Kaydet ✔, Yenile 🔄)",
+      "🛡️ Tüm Edge Function'larda local/prod CORS kontrolü güncellendi",
+      "📅 Takvim etkinliklerinde baş harfler artık kullanıcı tablosundan alınıyor (e-posta çözümlemesi yerine)",
+      "🔄 reverse-leave Edge Function'da CORS sorunu giderildi",
+      "🐞 Diğer küçük hata düzeltmeleri ve arayüz iyileştirmeleri"
+    ],
+  },
+  
+  {
     version: "v2.0.2",
-    date: "2025-07-12",
+    date: "2025-07-11",
     notes: [
       "🌍 Edge Function'larda local/prod CORS desteği ve güvenli JWT doğrulama",
       "📅 Tüm tarih alanları Türkçe (gg/aa/yyyy) formatına güncellendi",

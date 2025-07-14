@@ -43,7 +43,7 @@ export default function AdminPanel() {
   // Fetch all users, balances, holidays, etc.
   useEffect(() => {
     async function fetchAll() {
-      const { data: usersData } = await supabase.from("users").select("id, name, email, role, manager_email");
+      const { data: usersData } = await supabase.from("users").select("id, name, email, role, manager_email, initials");
       setUsers(usersData || []);
       const { data: typeData } = await supabase
         .from("leave_types")
@@ -113,7 +113,7 @@ export default function AdminPanel() {
       setAdminNote("");
       return;
     }
-    
+
     try {
       const res = await fetch(EDGE_FUNCTION_URL, {
         method: "POST",
@@ -201,6 +201,77 @@ export default function AdminPanel() {
       setMessage("Yönetici atama sırasında hata oluştu.");
     }
   }
+
+  async function onSaveUserInfo(user) {
+  setSavingUserId(user.id);
+  setMessage("");
+  let token = "";
+  try {
+    const { data } = await supabase.auth.getSession();
+    token = data?.session?.access_token;
+  } catch {}
+  if (!token) {
+    setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
+    setSavingUserId(null);
+    return;
+  }
+
+  const name = editing[`${user.id}_name`] ?? user.name ?? "";
+let initials = (editing[`${user.id}_initials`] ?? user.initials ?? "");
+if (initials.length >= 2) {
+  initials = initials[0].toUpperCase() + initials[1].toUpperCase() + (initials[2] || "");
+} else {
+  initials = initials.toUpperCase();
+}
+
+  // Client-side validation for initials (2-3 uppercase, unique handled on backend)
+if (!/^[A-ZÇĞİÖŞÜ]{2}[a-zçğıöşüA-ZÇĞİÖŞÜ]?$/.test(initials)) {
+  setMessage("Baş harflerin ilk 2 karakteri büyük harf olmalı. Üçüncü karakter küçük veya büyük harf olabilir (maks. 3 karakter, Türkçe desteklenir).");
+  setSavingUserId(null);
+  return;
+}
+
+
+  if (!name.trim()) {
+    setMessage("Ad alanı boş olamaz.");
+    setSavingUserId(null);
+    return;
+  }
+    console.log(initials)
+  try {
+    const res = await fetch(`${BASE_FUNCTION_URL}/update-user-info`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        user_id: user.id,
+        name,
+        initials,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      setMessage(data.error || "Kaydetme işlemi başarısız oldu.");
+    } else {
+      setUsers(users => users.map(u =>
+        u.id === user.id ? { ...u, name, initials } : u
+      ));
+      setMessage("Kullanıcı adı ve baş harfler başarıyla güncellendi.");
+      setEditing(ed => {
+        const newEd = { ...ed };
+        delete newEd[`${user.id}_name`];
+        delete newEd[`${user.id}_initials`];
+        return newEd;
+      });
+    }
+  } catch (err) {
+    setMessage("Kaydetme sırasında hata oluştu.");
+  }
+  setSavingUserId(null);
+}
+
 
   // Role assignment (no modal, no e-mail, just message)
   async function handleRoleChange(userId, newRole) {
@@ -336,60 +407,123 @@ export default function AdminPanel() {
         </div>
       )}
       <table style={{ width: "100%", fontSize: 16, borderSpacing: 0 }}>
-        <thead>
-          <tr style={{ background: "#CDE5F4", color: "#434344" }}>
-            <th style={th}>Kullanıcı</th>
-            <th style={th}>E-posta</th>
-            <th style={th}>Rol</th>
-            <th style={th}>Yönetici</th>
-            <th style={{ ...th, borderLeft: "2px solid #cde5f4" }} colSpan={3}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18 }}>
-                <span>Kalan</span>
-                <span></span>
-                <span></span>
-              </div>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-  {[...users].sort((a, b) => a.email.localeCompare(b.email)).map(user => {
-    const bal = getBal(user.id);
-    const key = (field) => `${user.id}_${field}`;
-    const remaining = editing[key("remaining")] ?? bal.remaining ?? "";
+       <thead>
+  <tr style={{ background: "#CDE5F4", color: "#434344" }}>
+    <th></th>
+    <th style={th}>Ad / Başh.</th>
+    <th style={th}>@terralab.com.tr</th>
+    <th style={th}>Rol</th>
+    <th style={th}>Yön.</th>
+    <th style={{ ...th, borderLeft: "2px solid #cde5f4" }}>Kalan</th>
+    <th style={th}>İşlem</th>
+  </tr>
+</thead>
 
-    // For smooth row highlight after refresh
-    const highlight = recentlyRefreshedUserId === user.id;
+<tbody>
+{[...users].sort((a, b) => a.email.localeCompare(b.email)).map(user => {
+  const key = (field) => `${user.id}_${field}`;
+  const name = editing[key("name")] ?? user.name ?? "";
+  const initials = editing[key("initials")] ?? user.initials ?? "";
+  const remaining = editing[key("remaining")] ?? getBal(user.id).remaining ?? "";
+  const username = user.email.replace("@terralab.com.tr", "");
+  const highlight = recentlyRefreshedUserId === user.id;
 
-    return (
-      <tr
-        key={user.id}
-        style={{
-          transition: "background 0.5s, opacity 0.5s",
-          background: highlight ? "#e9faf5" : undefined,
-          opacity: refreshingUserId === user.id ? 0.5 : 1
-        }}
-      >
-        {/* Kullanıcı adı */}
-        <td style={td}>{user.name || user.email}</td>
-        {/* E-posta */}
-        <td style={td}>{user.email}</td>
-        {/* Rol seçimi */}
-        <td style={td}>
-          {user.role === "admin" ? (
-            "Admin"
-          ) : (
-            <select
-              value={user.role}
-              onChange={e => handleRoleChange(user.id, e.target.value)}
-              style={inputStyle}
-            >
-              <option value="user">Kullanıcı</option>
-              <option value="manager">Yönetici</option>
-            </select>
-          )}
-        </td>
-        {/* Yönetici seçimi */}
-        <td style={td}>
+  return (
+    <tr
+      key={user.id}
+      style={{
+        transition: "background 0.5s, opacity 0.5s",
+        background: highlight ? "#e9faf5" : undefined,
+        opacity: refreshingUserId === user.id ? 0.5 : 1
+      }}
+    >
+      {/* Refresh button - very left */}
+      <td style={{ ...td, width: 36, textAlign: "center", background: "#F8FBFD" }}>
+        <button
+          style={{
+            background: "#F8FBFD",
+            border: "none",
+            borderRadius: 7,
+            width: 28,
+            height: 30,
+            fontSize: 15,
+            color: "#818285",
+            padding: 0,
+            cursor: refreshingUserId === user.id ? "not-allowed" : "pointer"
+          }}
+          title="Satırı yenile"
+          onClick={() => handleRefreshUser(user.id)}
+          disabled={refreshingUserId === user.id}
+        >
+          🔄
+        </button>
+      </td>
+      {/* Name + Initials (single line) */}
+      <td style={{ ...td, textAlign: "left", minWidth: 120, maxWidth: 180, display: "flex", alignItems: "center", gap: 8 }}>
+        <input
+          type="text"
+          value={name}
+          onChange={e => onEdit(user.id, "name", e.target.value)}
+          style={{
+            ...inputStyle,
+            width: 90,
+            fontWeight: 600,
+            fontSize: 15,
+            marginRight: 2
+          }}
+          maxLength={60}
+          placeholder="Ad Soyad"
+          autoComplete="off"
+        />
+        <input
+          type="text"
+          value={initials}
+          onChange={e => {
+            let val = e.target.value.replace(/[^A-Za-zÇĞİÖŞÜçğıöşü]/g, "").slice(0, 3);
+            if (val.length >= 2) {
+              val = val[0].toUpperCase() + val[1].toUpperCase() + (val[2] || "");
+            } else {
+              val = val.toUpperCase();
+            }
+            onEdit(user.id, "initials", val);
+          }}
+          style={{
+            ...inputStyle,
+            width: 36,
+            textAlign: "center",
+            fontWeight: 700,
+            fontSize: 14,
+            background: "#FFF2DC",
+            color: "#F39200"
+          }}
+          maxLength={3}
+          minLength={2}
+          placeholder="İLK."
+          autoComplete="off"
+        />
+      </td>
+      {/* Username (without @domain) */}
+      <td style={{ ...td, fontSize: 14, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis" }}>
+        {username}
+      </td>
+      {/* Role */}
+      <td style={td}>
+        {user.role === "admin" ? (
+          "Admin"
+        ) : (
+          <select
+            value={user.role}
+            onChange={e => handleRoleChange(user.id, e.target.value)}
+            style={{ ...inputStyle, width: 78 }}
+          >
+            <option value="user">Kullanıcı</option>
+            <option value="manager">Yönetici</option>
+          </select>
+        )}
+      </td>
+      {/* Manager + Blue check */}
+      <td style={{ ...td, position: "relative", minWidth: 120 }}>
+        <div style={{ display: "flex", alignItems: "center" }}>
           {user.role === "admin" ? (
             users.find(u => u.email === user.manager_email)?.name ||
             user.manager_email ||
@@ -398,7 +532,7 @@ export default function AdminPanel() {
             <select
               value={user.manager_email || ""}
               onChange={e => handleManagerChange(user.id, e.target.value)}
-              style={inputStyle}
+              style={{ ...inputStyle, width: 92, marginRight: 5 }}
             >
               <option value="">Yok</option>
               {[...users]
@@ -409,78 +543,61 @@ export default function AdminPanel() {
                     {mgr.name || mgr.email}
                   </option>
               ))}
-
             </select>
           )}
-        </td>
-        {/* --- Grouped Actions: Kalan + Kaydet + Refresh --- */}
-        <td style={{ ...td, borderLeft: "2px solid #cde5f4", background: "#f8fbfd" }}>
-          <input
-            type="number"
-            value={remaining}
-            onChange={e => onEdit(user.id, "remaining", e.target.value)}
-            style={inputStyle}
-            min={0}
-          />
-        </td>
-        <td style={{ ...td, background: "#f8fbfd" }}>
-          <button
+          {/* Blue checkmark next to manager field */}
+          <span
             style={{
-              background: "#F39200",
-              color: "#fff",
-              border: "none",
-              borderRadius: 7,
-              padding: "5px 12px",
-              fontWeight: 600,
-              cursor: savingUserId === user.id ? "not-allowed" : "pointer",
-              minWidth: 90,
-              position: "relative"
+              marginLeft: 5,
+              color: "#74B4DE",
+              fontSize: 19,
+              verticalAlign: "middle"
             }}
-            disabled={savingUserId === user.id}
-            onClick={() => onSaveClick(user)}
+            title="Yönetici değişikliğini kaydet"
+            onClick={() => onSaveUserInfo(user)}
           >
-            {savingUserId === user.id ? (
-              <>
-                <span
-                  className="spinner"
-                  style={{
-                    width: 16,
-                    height: 16,
-                    border: "2px solid #fff",
-                    borderTop: "2px solid #F0B357",
-                    borderRadius: "50%",
-                    display: "inline-block",
-                    marginRight: 6,
-                    animation: "spin 1s linear infinite",
-                    verticalAlign: "middle"
-                  }}
-                />
-                Kaydediliyor…
-              </>
-            ) : "Kaydet"}
-          </button>
-        </td>
-        <td style={{ ...td, background: "#f8fbfd" }}>
-          <button
-            style={{
-              background: "none",
-              border: "none",
-              cursor: refreshingUserId === user.id ? "not-allowed" : "pointer",
-              fontSize: 18,
-              padding: 4,
-              marginLeft: 4
-            }}
-            title="Satırı yenile"
-            onClick={() => handleRefreshUser(user.id)}
-            disabled={refreshingUserId === user.id}
-          >
-            {refreshingUserId === user.id ? "…" : "🔄"}
-          </button>
-        </td>
-      </tr>
-    );
-  })}
+            ✔
+          </span>
+        </div>
+      </td>
+      {/* Remaining (Kalan) */}
+      <td style={{ ...td, borderLeft: "2px solid #cde5f4", background: "#f8fbfd", width: 52 }}>
+        <input
+          type="number"
+          value={remaining}
+          onChange={e => onEdit(user.id, "remaining", e.target.value)}
+          style={{ ...inputStyle, width: 54, fontSize: 15 }}
+          min={0}
+        />
+      </td>
+      {/* Save (💾) */}
+      <td style={{ ...td, background: "#f8fbfd", width: 38 }}>
+        <button
+          style={{
+            background: "#F39200",
+            color: "#fff",
+            border: "none",
+            borderRadius: 7,
+            width: 30,
+            height: 30,
+            fontSize: 17,
+            marginRight: 2,
+            padding: 0,
+            cursor: savingUserId === user.id ? "not-allowed" : "pointer"
+          }}
+          disabled={savingUserId === user.id}
+          onClick={() => onSaveClick(user)}
+          title="Bakiyeyi Kaydet (E-posta gönderir)"
+        >
+          💾
+        </button>
+      </td>
+    </tr>
+  );
+})}
 </tbody>
+
+
       </table>
 
       {/* Confirmation Modal/Dialog */}

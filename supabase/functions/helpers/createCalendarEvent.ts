@@ -68,7 +68,21 @@ export async function createCalendarEvent({
   // --- END TIME LOGIC BLOCK ---
 
   // Get initials for subject
-  const initials = getInitialsFromEmail(employeeEmail);
+// --- FETCH INITIALS FROM USERS TABLE ---
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.0.0");
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+// Query the initials
+const { data: userRow, error: userErr } = await supabase
+  .from("users")
+  .select("initials")
+  .eq("email", employeeEmail)
+  .maybeSingle();
+
+let initials = userRow?.initials || ""; // fallback to empty string
 
   const eventBody = {
     subject: `${initials} İzin`,

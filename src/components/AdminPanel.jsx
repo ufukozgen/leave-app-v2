@@ -522,44 +522,65 @@ if (!/^[A-ZÇĞİÖŞÜ]{2}[a-zçğıöşüA-ZÇĞİÖŞÜ]?$/.test(initials)) {
         )}
       </td>
       {/* Manager + Blue check */}
-      <td style={{ ...td, position: "relative", minWidth: 120 }}>
-        <div style={{ display: "flex", alignItems: "center" }}>
-          {user.role === "admin" ? (
-            users.find(u => u.email === user.manager_email)?.name ||
-            user.manager_email ||
-            "-"
-          ) : (
-            <select
-              value={user.manager_email || ""}
-              onChange={e => handleManagerChange(user.id, e.target.value)}
-              style={{ ...inputStyle, width: 92, marginRight: 5 }}
-            >
-              <option value="">Yok</option>
-              {[...users]
-                .filter(u => u.email !== user.email)
-                .sort((a, b) => a.email.localeCompare(b.email))
-                .map(mgr => (
-                  <option key={mgr.email} value={mgr.email}>
-                    {mgr.name || mgr.email}
-                  </option>
-              ))}
-            </select>
-          )}
-          {/* Blue checkmark next to manager field */}
-          <span
-            style={{
-              marginLeft: 5,
-              color: "#74B4DE",
-              fontSize: 19,
-              verticalAlign: "middle"
-            }}
-            title="Yönetici değişikliğini kaydet"
-            onClick={() => onSaveUserInfo(user)}
-          >
-            ✔
-          </span>
-        </div>
-      </td>
+<td style={{ ...td, position: "relative", minWidth: 120, textAlign: "left", paddingRight: 40 }}>
+  <div style={{ display: "flex", alignItems: "center" }}>
+    {user.role === "admin" ? (
+      users.find(u => u.email === user.manager_email)?.name ||
+      user.manager_email ||
+      "-"
+    ) : (
+      <select
+        value={user.manager_email || ""}
+        onChange={e => handleManagerChange(user.id, e.target.value)}
+        style={{ ...inputStyle, width: 110, marginRight: 8 }}
+      >
+        <option value="">Yok</option>
+        {[...users]
+          .filter(u => u.email !== user.email)
+          .sort((a, b) => a.email.localeCompare(b.email))
+          .map(mgr => (
+            <option key={mgr.email} value={mgr.email}>
+              {mgr.name || mgr.email}
+            </option>
+        ))}
+      </select>
+    )}
+    {/* Spacer so the check is always at the right */}
+    <div style={{ flex: 1 }} />
+  </div>
+  {/* Absolutely positioned checkmark button */}
+  <button
+    onClick={() => onSaveUserInfo(user)}
+    title="Yönetici kaydet"
+    style={{
+      position: "absolute",
+      right: 6,
+      top: "50%",
+      transform: "translateY(-50%)",
+      background: "#74B4DE",
+      border: "none",
+      borderRadius: 7,
+      width: 30,
+      height: 30,
+      color: "#fff",
+      fontWeight: 900,
+      fontSize: 19,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      boxShadow: "0 1px 3px #cde5f470",
+      cursor: "pointer",
+      transition: "background 0.18s",
+      outline: "none",
+      zIndex: 2
+    }}
+    tabIndex={0}
+    onKeyDown={e => { if (e.key === "Enter" || e.key === " ") onSaveUserInfo(user); }}
+  >
+    ✔
+  </button>
+</td>
+
       {/* Remaining (Kalan) */}
       <td style={{ ...td, borderLeft: "2px solid #cde5f4", background: "#f8fbfd", width: 52 }}>
         <input

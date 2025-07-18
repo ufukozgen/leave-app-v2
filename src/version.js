@@ -2,6 +2,19 @@
 
 export const RELEASES = [
   {
+  version: "v2.0.4",
+  date: "2025-07-18",
+  notes: [
+    "👥 Admin'ler Çalışan Takip Konsolu'nda tüm kullanıcıları görebiliyor; yöneticiler yalnızca kendi ekibini görebiliyor",
+    "🔡 Çalışan listesi ad soyada göre alfabetik sıralanıyor (Türkçe uyumlu)",
+    "🟠 Onay/Reddet işlemleri yalnızca ilgili yöneticiler tarafından yapılabilir; adminler sadece görüntüleyebilir",
+    "🆕 İzin bakiyesi yedekleme Edge Function'ı eklendi (otomatik yedekleme, kurtarma ve denetim için)",
+    "⚙️ Yetkilendirme/props ile daha güvenli ve okunabilir kod",
+    "🐞 Küçük UI ve erişilebilirlik iyileştirmeleri"
+  ],
+},
+
+{
     version: "v2.0.3",
     date: "2025-07-14",
     notes: [

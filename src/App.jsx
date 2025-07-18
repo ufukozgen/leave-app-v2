@@ -297,7 +297,12 @@ if (!isLoggedIn) {
                 />
               )}
               {tab === "employee-console" && isManager && (
-                <EmployeeLeaveConsole managerEmail={dbUser.email} />
+                <EmployeeLeaveConsole
+  managerEmail={dbUser.email}
+  email={dbUser.email}     // pass current user's email
+  role={dbUser.role}       // pass current user's role (admin, manager, user)
+ />
+
               )}
             </div>
           </CSSTransition>

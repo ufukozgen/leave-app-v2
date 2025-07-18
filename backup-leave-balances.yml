@@ -1,0 +1,17 @@
+name: Monthly Leave Balance Backup
+
+on:
+  schedule:
+    - cron: '0 1 1 * *' # Every 1st of the month at 01:00 UTC
+  workflow_dispatch:     # Allow manual trigger
+
+jobs:
+  run-backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Supabase Function
+        run: |
+          curl -X POST ${{ secrets.SUPABASE_BACKUP_FUNCTION_URL }} \
+            -H "authorization: Bearer ${{ secrets.ADMIN_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{}'

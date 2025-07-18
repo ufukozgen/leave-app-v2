@@ -16,7 +16,7 @@ function getEmailPrefix(email) {
   return email.split("@")[0];
 }
 
-export default function EmployeeLeaveConsole({ managerEmail }) {
+export default function EmployeeLeaveConsole({ managerEmail, email, role }) {
   const [subordinates, setSubordinates] = useState([]); // { id, email }
   const [selectedUser, setSelectedUser] = useState(null); // { id, email }
   const [leaveRequests, setLeaveRequests] = useState([]);
@@ -27,17 +27,23 @@ export default function EmployeeLeaveConsole({ managerEmail }) {
 
   // Fetch subordinates of this manager
   useEffect(() => {
-    async function fetchSubordinates() {
-      const { data, error } = await supabase
-        .from("users")
-        .select("id, email")
-        .eq("manager_email", managerEmail);
-
-      if (!error && data) setSubordinates(data);
-      else setSubordinates([]);
+  async function fetchUsers() {
+    let query = supabase.from("users").select("id, email, manager_email");
+    if (role !== "admin") {
+      query = query.eq("manager_email", managerEmail);
     }
-    fetchSubordinates();
-  }, [managerEmail]);
+    const { data, error } = await query;
+    // Sort by first name (using displayName)
+    const sorted = (data || []).sort((a, b) => {
+      const aName = formatDisplayName(a.email).toLowerCase();
+      const bName = formatDisplayName(b.email).toLowerCase();
+      return aName.localeCompare(bName, "tr");
+    });
+    setSubordinates(sorted);
+  }
+  fetchUsers();
+}, [managerEmail, role]);
+
 
   // Fetch leave requests & balance when a subordinate is picked
   useEffect(() => {
@@ -128,7 +134,13 @@ export default function EmployeeLeaveConsole({ managerEmail }) {
               <LeaveRequestList
   key={selectedUser.id}
   userId={selectedUser.id}
-  isManagerView={true}
+  isManagerView={
+    // Only true if current user is actually this user's manager
+    selectedUser.manager_email === email
+  }
+  managerEmail={selectedUser.manager_email}
+  viewerEmail={email}
+  viewerRole={role}
   title={`${getEmailPrefix(selectedUser.email)} İzin Talepleri`}
 />
             </>

@@ -45,12 +45,23 @@ export default function AdminPanel() {
     async function fetchAll() {
       const { data: usersData } = await supabase.from("users").select("id, name, email, role, manager_email, initials");
       setUsers(usersData || []);
+      // TEMP: Fetch all leave_types for debugging
+const { data: allTypes } = await supabase.from("leave_types").select("*");
+console.log("ALL leave_types:", allTypes);
+
+      
       const { data: typeData } = await supabase
         .from("leave_types")
         .select("*")
         .eq("name", "Annual")
         .maybeSingle();
-      setAnnualType(typeData);
+      
+      console.log("Fetched leave_types:", typeData);
+
+        setAnnualType(typeData);
+
+      console.log("annualType state is now:", typeData);
+
       if (typeData) {
         const { data: balData } = await supabase
           .from("leave_balances")
@@ -377,12 +388,13 @@ if (!/^[A-ZÇĞİÖŞÜ]{2}[a-zçğıöşüA-ZÇĞİÖŞÜ]?$/.test(initials)) {
     setDeletingHolidayId(null);
   }
 
-  if (loading || typeof annualType === "undefined" || !dbUser) {
-    return <div style={{ fontFamily: "Urbanist" }}>Yükleniyor…</div>;
-  }
-  if (!annualType) {
-    return <div style={{ fontFamily: "Urbanist" }}>'Yıllık' izin tipi tanımlı değil.</div>;
-  }
+ if (loading || loadingAnnualType || typeof annualType === "undefined" || !dbUser) {
+  return <div style={{ fontFamily: "Urbanist" }}>Yükleniyor…</div>;
+}
+if (!annualType) {
+  return <div style={{ fontFamily: "Urbanist" }}>'Yıllık' izin tipi tanımlı değil.</div>;
+}
+
 
   return (
     <div

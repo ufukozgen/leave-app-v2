@@ -1,6 +1,7 @@
 // src/version.js
 
 export const RELEASES = [
+  
   {
   version: "v2.1.0",
   date: "2025-07-21",
@@ -8,9 +9,11 @@ export const RELEASES = [
     "🔔 Tüm uygulama genelinde anlık toast bildirimleri eklendi (başarı/hata durumları için)",
     "✅ İzin talebi, onay, reddetme, iptal, düşme ve geri alma işlemleri artık pop-up ile anında bildiriliyor",
     "👨‍💼 Admin ve yönetici işlemleri (bakiye güncelleme, yönetici/rol atama, tatil ekleme-silme vb.) için bildirim desteği",
-    "🖥️ Kullanıcı deneyimi ve işlem geri bildirimi önemli ölçüde geliştirildi"
+    "🖥️ Kullanıcı deneyimi ve işlem geri bildirimi önemli ölçüde geliştirildi",
+    "🐞 AdminPanel'de yanlışlıkla 'Yıllık izin tipi tanımlı değil' hatasının yüklenme sırasında görünmesi engellendi (doğru loading göstergesi gösteriliyor)"
   ],
 },
+
 
   
   {

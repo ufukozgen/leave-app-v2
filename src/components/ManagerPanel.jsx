@@ -6,6 +6,8 @@ import { useUser } from "./UserContext";
 import { CSSTransition, SwitchTransition } from "react-transition-group";
 import "../tabfade.css"; // (or wherever your fade CSS is)
 import { useRef } from "react";
+import { toast } from "react-hot-toast";
+
 
 function formatDateTR(iso) {
   if (!iso) return "";
@@ -181,65 +183,78 @@ useEffect(() => {
     }
   }
 
-  async function handleApprove(req) {
-    if (req.days > (req.remaining_days ?? 0)) {
-      const ok = window.confirm(
-        `Dikkat: Talep edilen izin (${req.days} gün), çalışanın mevcut kalan izninden (${req.remaining_days ?? 0} gün) fazla.\n\nOnaylarsanız, çalışanın izni eksi bakiyeye düşecek. Yine de devam etmek istiyor musunuz?`
-      );
-      if (!ok) return;
-    }
-    setProcessing({ id: req.id, type: "approve" });
-    const { success } = await callEdgeFunction(EDGE_ENDPOINTS.approve, { request_id: req.id });
-    if (success) {
-      setMessage("İzin başarıyla onaylandı.");
-      setRequests(r => r.filter(x => x.id !== req.id));
-      refreshCounts && refreshCounts();
-    }
-    setProcessing(null);
-  }
-
-  async function handleReject(req) {
-    const reason = prompt("Reddetme gerekçesi (görünecek):");
-    if (!reason) return;
-    setProcessing({ id: req.id, type: "reject" });
-    const { success } = await callEdgeFunction(EDGE_ENDPOINTS.reject, { request_id: req.id, reason });
-    if (success) {
-      setMessage("Talep reddedildi.");
-      setRequests(r => r.filter(x => x.id !== req.id));
-      refreshCounts && refreshCounts();
-    }
-    setProcessing(null);
-  }
-
-  async function handleDeduct(req) {
+async function handleApprove(req) {
+  if (req.days > (req.remaining_days ?? 0)) {
     const ok = window.confirm(
-      "Bu izin talebini düşmek (kullanıldı olarak işaretlemek) istediğinize emin misiniz?\nDevam etmek istiyor musunuz?"
+      `Dikkat: Talep edilen izin (${req.days} gün), çalışanın mevcut kalan izninden (${req.remaining_days ?? 0} gün) fazla.\n\nOnaylarsanız, çalışanın izni eksi bakiyeye düşecek. Yine de devam etmek istiyor musunuz?`
     );
     if (!ok) return;
-    setProcessing({ id: req.id, type: "deduct" });
-    const { success } = await callEdgeFunction(EDGE_ENDPOINTS.deduct, { request_id: req.id });
-    if (success) {
-      setMessage("İzin başarıyla düşüldü.");
-      setRequests(r => r.filter(x => x.id !== req.id));
-      refreshCounts && refreshCounts();
-    }
-    setProcessing(null);
   }
+  setProcessing({ id: req.id, type: "approve" });
+  const { success } = await callEdgeFunction(EDGE_ENDPOINTS.approve, { request_id: req.id });
+  if (success) {
+    setMessage("İzin başarıyla onaylandı.");
+    toast.success("İzin başarıyla onaylandı!");
+    setRequests(r => r.filter(x => x.id !== req.id));
+    refreshCounts && refreshCounts();
+  } else {
+    toast.error("İzin onaylanamadı!");
+  }
+  setProcessing(null);
+}
 
-  async function handleReverse(req) {
-    const ok = window.confirm(
-      "Bu izin hareketini geri almak istediğinize emin misiniz?\nBu işlem, izin bakiyesini ve durumu eski haline döndürecektir."
-    );
-    if (!ok) return;
-    setProcessing({ id: req.id, type: "reverse" });
-    const { success } = await callEdgeFunction(EDGE_ENDPOINTS.reverse, { request_id: req.id });
-    if (success) {
-      setMessage("İzin başarıyla geri alındı.");
-      setRequests(r => r.filter(x => x.id !== req.id));
-      refreshCounts && refreshCounts();
-    }
-    setProcessing(null);
+async function handleReject(req) {
+  const reason = prompt("Reddetme gerekçesi (görünecek):");
+  if (!reason) return;
+  setProcessing({ id: req.id, type: "reject" });
+  const { success } = await callEdgeFunction(EDGE_ENDPOINTS.reject, { request_id: req.id, reason });
+  if (success) {
+    setMessage("Talep reddedildi.");
+    toast.success("Talep reddedildi!");
+    setRequests(r => r.filter(x => x.id !== req.id));
+    refreshCounts && refreshCounts();
+  } else {
+    toast.error("Talep reddedilemedi!");
   }
+  setProcessing(null);
+}
+
+async function handleDeduct(req) {
+  const ok = window.confirm(
+    "Bu izin talebini düşmek (kullanıldı olarak işaretlemek) istediğinize emin misiniz?\nDevam etmek istiyor musunuz?"
+  );
+  if (!ok) return;
+  setProcessing({ id: req.id, type: "deduct" });
+  const { success } = await callEdgeFunction(EDGE_ENDPOINTS.deduct, { request_id: req.id });
+  if (success) {
+    setMessage("İzin başarıyla düşüldü.");
+    toast.success("İzin başarıyla düşüldü!");
+    setRequests(r => r.filter(x => x.id !== req.id));
+    refreshCounts && refreshCounts();
+  } else {
+    toast.error("İzin düşülemedi!");
+  }
+  setProcessing(null);
+}
+
+async function handleReverse(req) {
+  const ok = window.confirm(
+    "Bu izin hareketini geri almak istediğinize emin misiniz?\nBu işlem, izin bakiyesini ve durumu eski haline döndürecektir."
+  );
+  if (!ok) return;
+  setProcessing({ id: req.id, type: "reverse" });
+  const { success } = await callEdgeFunction(EDGE_ENDPOINTS.reverse, { request_id: req.id });
+  if (success) {
+    setMessage("İzin başarıyla geri alındı.");
+    toast.success("İzin başarıyla geri alındı!");
+    setRequests(r => r.filter(x => x.id !== req.id));
+    refreshCounts && refreshCounts();
+  } else {
+    toast.error("İzin geri alınamadı!");
+  }
+  setProcessing(null);
+}
+
 
   function TabBtn({ active, children, onClick, ...props }) {
     return (

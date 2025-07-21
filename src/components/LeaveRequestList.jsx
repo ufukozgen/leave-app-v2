@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { useUser } from "./UserContext";
+import { toast } from "react-hot-toast";
+
 
 const bluePalette = {
   headerBg: "#A8D2F2",
@@ -139,118 +141,106 @@ export default function LeaveRequestList({ userId, email, title, isManagerView =
       });
   }, [userId, dbUser]);
 
-  // Cancel only for self (pending or approved)
   async function handleCancel(req) {
-    if (!window.confirm("Bu izin talebini iptal etmek istediğinize emin misiniz?")) return;
-    setCancelId(req.id);
+  if (!window.confirm("Bu izin talebini iptal etmek istediğinize emin misiniz?")) return;
+  setCancelId(req.id);
 
-    // Get session token from Supabase
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
 
-    if (!token) {
-      alert("Oturum doğrulanamadı, lütfen tekrar giriş yapın.");
-      setCancelId(null);
-      return;
-    }
-
-    // Call edge function
-    const response = await fetch("https://sxinuiwawpruwzxfcgpc.functions.supabase.co/cancel-leave", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
-      body: JSON.stringify({ request_id: req.id }),
-    });
-
-    if (response.ok) {
-      // Logging: cancellation
-      await supabase.from("logs").insert([{
-        user_id: dbUser.id,
-        actor_email: dbUser.email,
-        action: "cancel_request",
-        target_table: "leave_requests",
-        target_id: req.id,
-        status_before: req.status,
-        status_after: "Cancelled",
-        details: { start_date: req.start_date, end_date: req.end_date, days: req.days }
-      }]);
-      // Refresh list in UI
-      setRequests(r =>
-        r.map(item => (item.id === req.id ? { ...item, status: "Cancelled" } : item))
-      );
-    } else {
-      const result = await response.json();
-      alert("İptal başarısız: " + (result?.error || "Bilinmeyen hata"));
-    }
+  if (!token) {
+    alert("Oturum doğrulanamadı, lütfen tekrar giriş yapın.");
+    toast.error("Oturum doğrulanamadı, lütfen tekrar giriş yapın.");
     setCancelId(null);
+    return;
   }
 
-  // ----------- Manager Actions (only if NOT self) ------------
+  const response = await fetch("https://sxinuiwawpruwzxfcgpc.functions.supabase.co/cancel-leave", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    },
+    body: JSON.stringify({ request_id: req.id }),
+  });
 
-  async function callEdgeFunction(endpoint, bodyObj) {
-    setMessage("");
-    try {
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token;
-      if (!token) throw new Error("Oturum bulunamadı!");
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify(bodyObj)
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Bir hata oluştu.");
-      return { success: true, data: json };
-    } catch (e) {
-      setMessage(e.message);
-      return { success: false };
-    }
+  if (response.ok) {
+    await supabase.from("logs").insert([{
+      user_id: dbUser.id,
+      actor_email: dbUser.email,
+      action: "cancel_request",
+      target_table: "leave_requests",
+      target_id: req.id,
+      status_before: req.status,
+      status_after: "Cancelled",
+      details: { start_date: req.start_date, end_date: req.end_date, days: req.days }
+    }]);
+    setRequests(r =>
+      r.map(item => (item.id === req.id ? { ...item, status: "Cancelled" } : item))
+    );
+    toast.success("İzin talebiniz iptal edildi.");
+  } else {
+    const result = await response.json();
+    alert("İptal başarısız: " + (result?.error || "Bilinmeyen hata"));
+    toast.error(result?.error || "İptal başarısız.");
   }
+  setCancelId(null);
+}
 
-  async function handleApprove(req) {
-    setProcessing({ id: req.id, type: "approve" });
-    const { success } = await callEdgeFunction(EDGE_ENDPOINTS.approve, { request_id: req.id });
-    if (success) {
-      setRequests(r => r.map(item => item.id === req.id ? { ...item, status: "Approved" } : item));
-    }
-    setProcessing(null);
-  }
+// --- MANAGER ACTIONS BELOW ---
 
-  async function handleReject(req) {
-    const reason = prompt("Reddetme gerekçesi (görünecek):");
-    if (!reason) return;
-    setProcessing({ id: req.id, type: "reject" });
-    const { success } = await callEdgeFunction(EDGE_ENDPOINTS.reject, { request_id: req.id, reason });
-    if (success) {
-      setRequests(r => r.map(item => item.id === req.id ? { ...item, status: "Rejected" } : item));
-    }
-    setProcessing(null);
+async function handleApprove(req) {
+  setProcessing({ id: req.id, type: "approve" });
+  const { success } = await callEdgeFunction(EDGE_ENDPOINTS.approve, { request_id: req.id });
+  if (success) {
+    setRequests(r => r.map(item => item.id === req.id ? { ...item, status: "Approved" } : item));
+    toast.success("İzin başarıyla onaylandı!");
+  } else {
+    toast.error("İzin onaylanamadı!");
   }
+  setProcessing(null);
+}
 
-  async function handleDeduct(req) {
-    if (!window.confirm("Bu izin talebini düşmek (kullanıldı olarak işaretlemek) istediğinize emin misiniz?")) return;
-    setProcessing({ id: req.id, type: "deduct" });
-    const { success } = await callEdgeFunction(EDGE_ENDPOINTS.deduct, { request_id: req.id });
-    if (success) {
-      setRequests(r => r.map(item => item.id === req.id ? { ...item, status: "Deducted" } : item));
-    }
-    setProcessing(null);
+async function handleReject(req) {
+  const reason = prompt("Reddetme gerekçesi (görünecek):");
+  if (!reason) return;
+  setProcessing({ id: req.id, type: "reject" });
+  const { success } = await callEdgeFunction(EDGE_ENDPOINTS.reject, { request_id: req.id, reason });
+  if (success) {
+    setRequests(r => r.map(item => item.id === req.id ? { ...item, status: "Rejected" } : item));
+    toast.success("Talep reddedildi!");
+  } else {
+    toast.error("Talep reddedilemedi!");
   }
+  setProcessing(null);
+}
 
-  async function handleReverse(req) {
-    if (!window.confirm("Bu izin hareketini geri almak istediğinize emin misiniz?")) return;
-    setProcessing({ id: req.id, type: "reverse" });
-    const { success } = await callEdgeFunction(EDGE_ENDPOINTS.reverse, { request_id: req.id });
-    if (success) {
-      setRequests(r => r.map(item => item.id === req.id ? { ...item, status: "Pending" } : item));
-    }
-    setProcessing(null);
+async function handleDeduct(req) {
+  if (!window.confirm("Bu izin talebini düşmek (kullanıldı olarak işaretlemek) istediğinize emin misiniz?")) return;
+  setProcessing({ id: req.id, type: "deduct" });
+  const { success } = await callEdgeFunction(EDGE_ENDPOINTS.deduct, { request_id: req.id });
+  if (success) {
+    setRequests(r => r.map(item => item.id === req.id ? { ...item, status: "Deducted" } : item));
+    toast.success("İzin başarıyla düşüldü!");
+  } else {
+    toast.error("İzin düşülemedi!");
   }
+  setProcessing(null);
+}
+
+async function handleReverse(req) {
+  if (!window.confirm("Bu izin hareketini geri almak istediğinize emin misiniz?")) return;
+  setProcessing({ id: req.id, type: "reverse" });
+  const { success } = await callEdgeFunction(EDGE_ENDPOINTS.reverse, { request_id: req.id });
+  if (success) {
+    setRequests(r => r.map(item => item.id === req.id ? { ...item, status: "Pending" } : item));
+    toast.success("İzin başarıyla geri alındı!");
+  } else {
+    toast.error("İzin geri alınamadı!");
+  }
+  setProcessing(null);
+}
+
 
   // ----------- Render -----------
   if (!contentVisible) {

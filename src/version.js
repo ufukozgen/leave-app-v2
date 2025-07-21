@@ -2,6 +2,18 @@
 
 export const RELEASES = [
   {
+  version: "v2.1.0",
+  date: "2025-07-21",
+  notes: [
+    "🔔 Tüm uygulama genelinde anlık toast bildirimleri eklendi (başarı/hata durumları için)",
+    "✅ İzin talebi, onay, reddetme, iptal, düşme ve geri alma işlemleri artık pop-up ile anında bildiriliyor",
+    "👨‍💼 Admin ve yönetici işlemleri (bakiye güncelleme, yönetici/rol atama, tatil ekleme-silme vb.) için bildirim desteği",
+    "🖥️ Kullanıcı deneyimi ve işlem geri bildirimi önemli ölçüde geliştirildi"
+  ],
+},
+
+  
+  {
   version: "v2.0.4",
   date: "2025-07-18",
   notes: [

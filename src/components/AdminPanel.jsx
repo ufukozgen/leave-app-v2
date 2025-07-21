@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { useUser } from "./UserContext";
+import { toast } from "react-hot-toast";
 
 // Edge Function URLs (update these if your project changes)
 const BASE_FUNCTION_URL = "https://sxinuiwawpruwzxfcgpc.supabase.co/functions/v1";
@@ -101,119 +102,124 @@ console.log("ALL leave_types:", allTypes);
     setMessage("");
   }
 
-  async function onConfirmSave() {
-    if (!confirmingUser) return;
+ async function onConfirmSave() {
+  if (!confirmingUser) return;
+  setConfirmingUser(null);
+  setAdminNote("");
+  setSavingUserId(confirmingUser.id);
+  setMessage("");
+  const bal = getBal(confirmingUser?.id);
+  const key = (field) => `${confirmingUser.id}_${field}`;
+  const parseOrZero = val => isNaN(Number(val)) || val === "" ? 0 : Number(val);
+  const remaining = parseOrZero(editing[key("remaining")] ?? getBal(confirmingUser?.id)?.remaining ?? "");
+
+  let token = "";
+  try {
+    const { data } = await supabase.auth.getSession();
+    token = data?.session?.access_token;
+  } catch {}
+  if (!token) {
+    setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
+    toast.error("Oturum bulunamadı, lütfen tekrar giriş yapın.");
+    setSavingUserId(null);
     setConfirmingUser(null);
     setAdminNote("");
-    setSavingUserId(confirmingUser.id);
-    setMessage("");
-    const bal = getBal(confirmingUser?.id);
-    const key = (field) => `${confirmingUser.id}_${field}`;
-    const parseOrZero = val => isNaN(Number(val)) || val === "" ? 0 : Number(val);
-    const remaining = parseOrZero(editing[key("remaining")] ?? getBal(confirmingUser?.id)?.remaining ?? "");
+    return;
+  }
 
-    let token = "";
-    try {
-      const { data } = await supabase.auth.getSession();
-      token = data?.session?.access_token;
-    } catch {}
-    if (!token) {
-      setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
-      setSavingUserId(null);
-      setConfirmingUser(null);
-      setAdminNote("");
-      return;
-    }
-
-    try {
-      const res = await fetch(EDGE_FUNCTION_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          user_id: confirmingUser.id,
-          remaining,
-          admin_email: dbUser.email,
-          admin_name: dbUser.name,
-          note: adminNote,
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setMessage(data.error || "Kaydetme işlemi başarısız oldu.");
-      } else {
-        setBalances((prev) => {
-          let found = false;
-          const updated = prev.map(bal => {
-            if (bal.user_id === confirmingUser.id && bal.leave_type_id === annualType.id) {
-              found = true;
-              return {
-                ...bal,
-                remaining,
-                last_updated: new Date().toISOString(),
-              };
-            }
-            return bal;
-          });
-          if (!found) {
-            updated.push({
-              user_id: confirmingUser.id,
-              leave_type_id: annualType.id,
+  try {
+    const res = await fetch(EDGE_FUNCTION_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        user_id: confirmingUser.id,
+        remaining,
+        admin_email: dbUser.email,
+        admin_name: dbUser.name,
+        note: adminNote,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      setMessage(data.error || "Kaydetme işlemi başarısız oldu.");
+      toast.error(data.error || "Kaydetme işlemi başarısız oldu.");
+    } else {
+      setBalances((prev) => {
+        let found = false;
+        const updated = prev.map(bal => {
+          if (bal.user_id === confirmingUser.id && bal.leave_type_id === annualType.id) {
+            found = true;
+            return {
+              ...bal,
               remaining,
               last_updated: new Date().toISOString(),
-            });
+            };
           }
-          return updated;
+          return bal;
         });
-        setMessage("Kaydedildi ve bildirim gönderildi.");
-      }
-    } catch (err) {
-      setMessage("Kaydetme sırasında hata oluştu.");
-    }
-    setSavingUserId(null);
-  }
-
-  function onCancelConfirm() {
-    setConfirmingUser(null);
-    setAdminNote("");
-  }
-
-  // Manager assignment (no modal, no e-mail, just message)
-  async function handleManagerChange(userId, newManagerEmail) {
-    setMessage("");
-    let token = "";
-    try {
-      const { data } = await supabase.auth.getSession();
-      token = data?.session?.access_token;
-    } catch {}
-    if (!token) {
-      setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
-      return;
-    }
-    try {
-      const res = await fetch(ASSIGN_MANAGER_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          manager_email: newManagerEmail,
-        }),
+        if (!found) {
+          updated.push({
+            user_id: confirmingUser.id,
+            leave_type_id: annualType.id,
+            remaining,
+            last_updated: new Date().toISOString(),
+          });
+        }
+        return updated;
       });
-      const data = await res.json();
-      if (!data.success) setMessage(data.error || "Yönetici atama başarısız.");
-      else setUsers(users => users.map(u => u.id === userId ? { ...u, manager_email: newManagerEmail } : u));
-      if (data.success) setMessage("Yönetici değiştirildi.");
-    } catch (err) {
-      setMessage("Yönetici atama sırasında hata oluştu.");
+      setMessage("Kaydedildi ve bildirim gönderildi.");
+      toast.success("Bakiye güncellendi ve e-posta gönderildi!");
     }
+  } catch (err) {
+    setMessage("Kaydetme sırasında hata oluştu.");
+    toast.error("Kaydetme sırasında hata oluştu.");
   }
+  setSavingUserId(null);
+}
 
-  async function onSaveUserInfo(user) {
+async function handleManagerChange(userId, newManagerEmail) {
+  setMessage("");
+  let token = "";
+  try {
+    const { data } = await supabase.auth.getSession();
+    token = data?.session?.access_token;
+  } catch {}
+  if (!token) {
+    setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
+    toast.error("Oturum bulunamadı, lütfen tekrar giriş yapın.");
+    return;
+  }
+  try {
+    const res = await fetch(ASSIGN_MANAGER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        manager_email: newManagerEmail,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      setMessage(data.error || "Yönetici atama başarısız.");
+      toast.error(data.error || "Yönetici atama başarısız.");
+    } else {
+      setUsers(users => users.map(u => u.id === userId ? { ...u, manager_email: newManagerEmail } : u));
+      setMessage("Yönetici değiştirildi.");
+      toast.success("Yönetici değiştirildi.");
+    }
+  } catch (err) {
+    setMessage("Yönetici atama sırasında hata oluştu.");
+    toast.error("Yönetici atama sırasında hata oluştu.");
+  }
+}
+
+async function onSaveUserInfo(user) {
   setSavingUserId(user.id);
   setMessage("");
   let token = "";
@@ -223,32 +229,33 @@ console.log("ALL leave_types:", allTypes);
   } catch {}
   if (!token) {
     setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
+    toast.error("Oturum bulunamadı, lütfen tekrar giriş yapın.");
     setSavingUserId(null);
     return;
   }
 
   const name = editing[`${user.id}_name`] ?? user.name ?? "";
-let initials = (editing[`${user.id}_initials`] ?? user.initials ?? "");
-if (initials.length >= 2) {
-  initials = initials[0].toUpperCase() + initials[1].toUpperCase() + (initials[2] || "");
-} else {
-  initials = initials.toUpperCase();
-}
+  let initials = (editing[`${user.id}_initials`] ?? user.initials ?? "");
+  if (initials.length >= 2) {
+    initials = initials[0].toUpperCase() + initials[1].toUpperCase() + (initials[2] || "");
+  } else {
+    initials = initials.toUpperCase();
+  }
 
   // Client-side validation for initials (2-3 uppercase, unique handled on backend)
-if (!/^[A-ZÇĞİÖŞÜ]{2}[a-zçğıöşüA-ZÇĞİÖŞÜ]?$/.test(initials)) {
-  setMessage("Baş harflerin ilk 2 karakteri büyük harf olmalı. Üçüncü karakter küçük veya büyük harf olabilir (maks. 3 karakter, Türkçe desteklenir).");
-  setSavingUserId(null);
-  return;
-}
-
-
-  if (!name.trim()) {
-    setMessage("Ad alanı boş olamaz.");
+  if (!/^[A-ZÇĞİÖŞÜ]{2}[a-zçğıöşüA-ZÇĞİÖŞÜ]?$/.test(initials)) {
+    setMessage("Baş harflerin ilk 2 karakteri büyük harf olmalı. Üçüncü karakter küçük veya büyük harf olabilir (maks. 3 karakter, Türkçe desteklenir).");
+    toast.error("Baş harfler formatı hatalı.");
     setSavingUserId(null);
     return;
   }
-    console.log(initials)
+
+  if (!name.trim()) {
+    setMessage("Ad alanı boş olamaz.");
+    toast.error("Ad alanı boş olamaz.");
+    setSavingUserId(null);
+    return;
+  }
   try {
     const res = await fetch(`${BASE_FUNCTION_URL}/update-user-info`, {
       method: "POST",
@@ -265,11 +272,13 @@ if (!/^[A-ZÇĞİÖŞÜ]{2}[a-zçğıöşüA-ZÇĞİÖŞÜ]?$/.test(initials)) {
     const data = await res.json();
     if (!data.success) {
       setMessage(data.error || "Kaydetme işlemi başarısız oldu.");
+      toast.error(data.error || "Kaydetme işlemi başarısız oldu.");
     } else {
       setUsers(users => users.map(u =>
         u.id === user.id ? { ...u, name, initials } : u
       ));
       setMessage("Kullanıcı adı ve baş harfler başarıyla güncellendi.");
+      toast.success("Kullanıcı adı ve baş harfler başarıyla güncellendi!");
       setEditing(ed => {
         const newEd = { ...ed };
         delete newEd[`${user.id}_name`];
@@ -279,46 +288,51 @@ if (!/^[A-ZÇĞİÖŞÜ]{2}[a-zçğıöşüA-ZÇĞİÖŞÜ]?$/.test(initials)) {
     }
   } catch (err) {
     setMessage("Kaydetme sırasında hata oluştu.");
+    toast.error("Kaydetme sırasında hata oluştu.");
   }
   setSavingUserId(null);
 }
 
-
-  // Role assignment (no modal, no e-mail, just message)
-  async function handleRoleChange(userId, newRole) {
-    setMessage("");
-    let token = "";
-    try {
-      const { data } = await supabase.auth.getSession();
-      token = data?.session?.access_token;
-    } catch {}
-    if (!token) {
-      setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
-      return;
-    }
-    try {
-      const res = await fetch(ASSIGN_ROLE_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          role: newRole,
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) setMessage(data.error || "Rol atama başarısız.");
-      else setUsers(users => users.map(u => u.id === userId ? { ...u, role: newRole } : u));
-      if (data.success) setMessage("Rol güncellendi.");
-    } catch (err) {
-      setMessage("Rol atama sırasında hata oluştu.");
-    }
+async function handleRoleChange(userId, newRole) {
+  setMessage("");
+  let token = "";
+  try {
+    const { data } = await supabase.auth.getSession();
+    token = data?.session?.access_token;
+  } catch {}
+  if (!token) {
+    setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
+    toast.error("Oturum bulunamadı, lütfen tekrar giriş yapın.");
+    return;
   }
+  try {
+    const res = await fetch(ASSIGN_ROLE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        role: newRole,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      setMessage(data.error || "Rol atama başarısız.");
+      toast.error(data.error || "Rol atama başarısız.");
+    } else {
+      setUsers(users => users.map(u => u.id === userId ? { ...u, role: newRole } : u));
+      setMessage("Rol güncellendi.");
+      toast.success("Rol güncellendi.");
+    }
+  } catch (err) {
+    setMessage("Rol atama sırasında hata oluştu.");
+    toast.error("Rol atama sırasında hata oluştu.");
+  }
+}
 
-  // Row refresh (🔄) per user
-  async function handleRefreshUser(userId) {
+async function handleRefreshUser(userId) {
   setRefreshingUserId(userId);
   setMessage("");
   const { data: updatedUser, error } = await supabase
@@ -328,6 +342,7 @@ if (!/^[A-ZÇĞİÖŞÜ]{2}[a-zçğıöşüA-ZÇĞİÖŞÜ]?$/.test(initials)) {
     .maybeSingle();
   if (error || !updatedUser) {
     setMessage("Kullanıcı bilgisi güncellenemedi.");
+    toast.error("Kullanıcı bilgisi güncellenemedi.");
     setRefreshingUserId(null);
     return;
   }
@@ -335,58 +350,63 @@ if (!/^[A-ZÇĞİÖŞÜ]{2}[a-zçğıöşüA-ZÇĞİÖŞÜ]?$/.test(initials)) {
     users.map(u => u.id === userId ? { ...u, ...updatedUser } : u)
   );
   setMessage("Kullanıcı bilgisi yenilendi.");
+  toast.success("Kullanıcı bilgisi yenilendi.");
   setRefreshingUserId(null);
 
-  // Highlight the row for 1 second
   setRecentlyRefreshedUserId(userId);
   setTimeout(() => setRecentlyRefreshedUserId(null), 1000);
 }
 
-  // Retroactive toggle
-  useEffect(() => {
-    async function fetchSettings() {
-      const { data } = await supabase.from("settings").select("allow_retroactive_leave").single();
-      if (data) setAllowRetroactiveLeave(data.allow_retroactive_leave);
-    }
-    fetchSettings();
-  }, []);
-
-  async function handleToggleRetroactive() {
-    const { data, error } = await supabase
-      .from("settings")
-      .update({ allow_retroactive_leave: !allowRetroactiveLeave })
-      .eq("id", 1);
-    if (!error) setAllowRetroactiveLeave(!allowRetroactiveLeave);
+async function handleAddHoliday(e) {
+  e.preventDefault();
+  setAddingHoliday(true);
+  const newRow = {
+    date: newHolidayDate,
+    name: newHolidayName,
+    is_half_day: isHalfDay,
+    half: isHalfDay ? half : null
+  };
+  const { data, error } = await supabase.from("holidays").insert([newRow]).select();
+  if (!error && data && data[0]) {
+    setHolidays([...holidays, data[0]]);
+    setNewHolidayDate("");
+    setNewHolidayName("");
+    setIsHalfDay(false);
+    setHalf("afternoon");
+    toast.success("Tatil eklendi!");
+  } else {
+    toast.error(error?.message || "Tatil eklenemedi.");
   }
+  setAddingHoliday(false);
+}
 
-  // Holiday CRUD
-  async function handleAddHoliday(e) {
-    e.preventDefault();
-    setAddingHoliday(true);
-    const newRow = {
-      date: newHolidayDate,
-      name: newHolidayName,
-      is_half_day: isHalfDay,
-      half: isHalfDay ? half : null
-    };
-    const { data, error } = await supabase.from("holidays").insert([newRow]).select();
-    if (!error && data && data[0]) {
-      setHolidays([...holidays, data[0]]);
-      setNewHolidayDate("");
-      setNewHolidayName("");
-      setIsHalfDay(false);
-      setHalf("afternoon");
-    }
-    setAddingHoliday(false);
-  }
-
-  async function onDeleteHoliday(h) {
-    if (!window.confirm("Silmek istediğinize emin misiniz?")) return;
-    setDeletingHolidayId(h.id);
-    await supabase.from("holidays").delete().eq("id", h.id);
+async function onDeleteHoliday(h) {
+  if (!window.confirm("Silmek istediğinize emin misiniz?")) return;
+  setDeletingHolidayId(h.id);
+  const { error } = await supabase.from("holidays").delete().eq("id", h.id);
+  if (!error) {
     setHolidays(holidays.filter(hol => hol.id !== h.id));
-    setDeletingHolidayId(null);
+    toast.success("Tatil silindi.");
+  } else {
+    toast.error("Tatil silinirken hata oluştu.");
   }
+  setDeletingHolidayId(null);
+}
+
+// ---- RETROACTIVE TOGGLE ----
+async function handleToggleRetroactive() {
+  const { data, error } = await supabase
+    .from("settings")
+    .update({ allow_retroactive_leave: !allowRetroactiveLeave })
+    .eq("id", 1);
+  if (!error) {
+    setAllowRetroactiveLeave(!allowRetroactiveLeave);
+    toast.success(`Retroaktif izin ${!allowRetroactiveLeave ? "açıldı" : "kapatıldı"}.`);
+  } else {
+    toast.error("Retroaktif izin ayarı güncellenemedi.");
+  }
+}
+
 
  if (loading || loadingAnnualType || typeof annualType === "undefined" || !dbUser) {
   return <div style={{ fontFamily: "Urbanist" }}>Yükleniyor…</div>;

@@ -7,6 +7,8 @@ import { addDays, isWeekend, format, isAfter } from "date-fns";
 import { tr } from "date-fns/locale";
 import { RELEASES } from "../version";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "react-hot-toast";
+
 
 const APP_VERSION = RELEASES[0].version;
 
@@ -161,114 +163,97 @@ useEffect(() => {
     return !isWeekend(date) && !isHoliday(date);
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setSubmitting(true);
-    setResult("");
+async function handleSubmit(e) {
+  e.preventDefault();
+  setSubmitting(true);
+  setResult("");
 
-if (!annualType) {
-  setResult("❌ Yıllık izin türü henüz yüklenmedi, lütfen bekleyiniz.");
-  setSubmitting(false);
-  return;
-}
-
-  
-  if (!form.start_date || !form.end_date) {
-  setResult("❌ Lütfen tüm zorunlu alanları doldurun.");
-  setSubmitting(false);
-  return;
-}
-
-if (!form.location) {
-  setResult("❌ Lütfen izin lokasyonunu giriniz.");
-  setSubmitting(false);
-  return;
-}
-
-if (!dbUser?.manager_email) {
-  setResult("❌ Hesabınıza atanmış bir yönetici yok.");
-  setSubmitting(false);
-  return;
-}
-
-    const days = calculateDays();
-    if (days === 0) {
-      setResult("❌ Bitiş tarihi, başlangıç tarihinden önce olamaz veya hafta sonu/tatil günlerine izin talep edilemez.");
-      setSubmitting(false);
-      return;
-    }
-
-    // Convert to strings for DB
-    const start_date_str = format(form.start_date, "yyyy-MM-dd");
-    const end_date_str = format(form.end_date, "yyyy-MM-dd");
-
-    // Insert leave request (for "Annual")
-   const userSession = await supabase.auth.getSession();
-const accessToken = userSession?.data?.session?.access_token;
-
-const response = await fetch("https://sxinuiwawpruwzxfcgpc.functions.supabase.co/create-leave", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${accessToken}`,
-  },
-  body: JSON.stringify({
-    user_id: dbUser.id,
-    start_date: start_date_str,
-    end_date: end_date_str,
-    duration_type: form.duration_type,
-    return_date: form.return_date,
-    location: form.location,
-    note: form.note,
-    days,
-    manager_email: dbUser.manager_email,
-    email: dbUser.email,
-    leave_type_id: annualType?.id,
-  }),
-});
-
-const resultJson = await response.json();
-setSubmitting(false);
-
-if (!response.ok) {
-  setResult("❌ " + (resultJson.error || "Bir hata oluştu."));
-} else {
-  setResult("✅ İzin talebiniz gönderildi!");
-  // You can clear/reset form etc.
-}
-
-
+  if (!annualType) {
+    setResult("❌ Yıllık izin türü henüz yüklenmedi, lütfen bekleyiniz.");
+    toast.error("Yıllık izin türü yüklenmedi, lütfen bekleyiniz.");
     setSubmitting(false);
-
-    if (resultJson.error) {
-      setResult("❌ " + error.message);
-    } else {
-      setResult("✅ İzin talebiniz gönderildi!");
-      
-      // Logging
-      /* if (data && data[0]) {
-        await supabase.from("logs").insert([{
-          user_id: dbUser.id,
-          actor_email: dbUser.email,
-          action: "submit_request",
-          target_table: "leave_requests",
-          target_id: data[0].id,
-          status_before: null,
-          status_after: "Pending",
-          details: { days, ...form }
-        }]);
-      } */
-
-      setForm({
-        start_date: null,
-        end_date: null,
-        duration_type: "full",
-        return_date: "",
-        location: "",
-        note: "",
-      });
-    }
+    return;
   }
+
+  if (!form.start_date || !form.end_date) {
+    setResult("❌ Lütfen tüm zorunlu alanları doldurun.");
+    toast.error("Lütfen tüm zorunlu alanları doldurun.");
+    setSubmitting(false);
+    return;
+  }
+
+  if (!form.location) {
+    setResult("❌ Lütfen izin lokasyonunu giriniz.");
+    toast.error("Lütfen izin lokasyonunu giriniz.");
+    setSubmitting(false);
+    return;
+  }
+
+  if (!dbUser?.manager_email) {
+    setResult("❌ Hesabınıza atanmış bir yönetici yok.");
+    toast.error("Hesabınıza atanmış bir yönetici yok.");
+    setSubmitting(false);
+    return;
+  }
+
+  const days = calculateDays();
+  if (days === 0) {
+    setResult("❌ Bitiş tarihi, başlangıç tarihinden önce olamaz veya hafta sonu/tatil günlerine izin talep edilemez.");
+    toast.error("Tarih aralığı hatalı veya izin haftasonu/tatile denk geliyor.");
+    setSubmitting(false);
+    return;
+  }
+
+  // Convert to strings for DB
+  const start_date_str = format(form.start_date, "yyyy-MM-dd");
+  const end_date_str = format(form.end_date, "yyyy-MM-dd");
+
+  // Insert leave request (for "Annual")
+  const userSession = await supabase.auth.getSession();
+  const accessToken = userSession?.data?.session?.access_token;
+
+  const response = await fetch("https://sxinuiwawpruwzxfcgpc.functions.supabase.co/create-leave", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      user_id: dbUser.id,
+      start_date: start_date_str,
+      end_date: end_date_str,
+      duration_type: form.duration_type,
+      return_date: form.return_date,
+      location: form.location,
+      note: form.note,
+      days,
+      manager_email: dbUser.manager_email,
+      email: dbUser.email,
+      leave_type_id: annualType?.id,
+    }),
+  });
+
+  const resultJson = await response.json();
+  setSubmitting(false);
+
+  if (!response.ok || resultJson.error) {
+    setResult("❌ " + (resultJson.error || "Bir hata oluştu."));
+    toast.error(resultJson.error || "Bir hata oluştu.");
+  } else {
+    setResult("✅ İzin talebiniz gönderildi!");
+    toast.success("İzin talebiniz gönderildi!");
+    // Clear/reset form
+    setForm({
+      start_date: null,
+      end_date: null,
+      duration_type: "full",
+      return_date: "",
+      location: "",
+      note: "",
+    });
+  }
+}
+
 
   const [showHistory, setShowHistory] = useState(false);
   const latestRelease = RELEASES[0];

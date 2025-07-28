@@ -102,6 +102,12 @@ console.log("ALL leave_types:", allTypes);
     setMessage("");
   }
 
+  function onCancelConfirm() {
+  setConfirmingUser(null);
+  setAdminNote("");
+  toast("İşlem iptal edildi.");
+}
+
  async function onConfirmSave() {
   if (!confirmingUser) return;
   setConfirmingUser(null);

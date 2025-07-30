@@ -34,7 +34,7 @@ export function UserProvider({ children }) {
     supabase
       .from("users")
       .select("*")
-      .eq("email", authUser.email)
+      .eq("id", authUser.id)
       .single()
       .then(({ data }) => {
         setDbUser(data);

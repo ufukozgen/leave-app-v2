@@ -21,7 +21,7 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { user_id, name, initials } = await req.json();
+    const { user_id, name, initials, is_admin } = await req.json();
 
     // Auth
     const authHeader = req.headers.get("authorization") || "";
@@ -97,8 +97,28 @@ serve(async (req) => {
       return new Response(JSON.stringify({ success: true, message: "No changes" }), { status: 200, headers: corsHeaders });
 
     // Update user
-    const { error: updateError } = await supabase.from("users").update(updateObj).eq("id", user_id);
-    if (updateError) throw updateError;
+const { error: updateError } = await supabase.from("users").update(updateObj).eq("id", user_id);
+if (updateError) throw updateError;
+
+// ✅ NEW: Update is_admin securely via app_metadata
+if (typeof is_admin === "boolean") {
+  const { error: metaError } = await supabase.auth.admin.updateUserById(user_id, {
+    app_metadata: { is_admin }
+  });
+  if (metaError) {
+    return new Response(JSON.stringify({ error: "Failed to update app_metadata" }), { status: 500, headers: corsHeaders });
+  }
+
+  logActions.push({
+    target_user_id: user_id,
+    action: "update_is_admin",
+    performed_by: actor.id,
+    performed_by_email: actorRow.email,
+    note: `Yönetici yetkisi '${is_admin}' olarak ayarlandı`,
+    created_at: new Date().toISOString(),
+  });
+}
+
 
     // Insert user_logs for changes
     if (logActions.length) {

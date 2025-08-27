@@ -3,6 +3,18 @@
 export const RELEASES = [
   
   {
+  version: "v2.2.1",
+  date: "2025-08-29",
+  notes: [
+    "✍️ Out-of-Office (OOO) mesajı artık özelleştirilebilir",
+    "📧 Varsayılan TR+EN mesajı formda placeholder olarak görüntülenir; kullanıcı isterse tamamen değiştirebilir",
+    "🔄 Boş bırakılırsa sistem güvenli TR+EN varsayılan mesajını uygular",
+    "🗄️ create-leave ve approve-leave fonksiyonları ooo_custom_message alanını destekleyecek şekilde güncellendi"
+  ],
+},
+
+  
+  {
   version: "v2.2.0",
   date: "2025-08-28",
   notes: [

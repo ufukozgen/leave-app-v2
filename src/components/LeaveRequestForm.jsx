@@ -19,6 +19,7 @@ export default function LeaveRequestForm() {
   const [allowRetroactiveLeave, setAllowRetroactiveLeave] = useState(false);
   const [holidaysMap, setHolidaysMap] = useState({});
   const [holidays, setHolidays] = useState([]);
+  const [enableOOO, setEnableOOO] = useState(false);
   const [form, setForm] = useState({
     start_date: null,
     end_date: null,
@@ -218,19 +219,22 @@ async function handleSubmit(e) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({
-      user_id: dbUser.id,
-      start_date: start_date_str,
-      end_date: end_date_str,
-      duration_type: form.duration_type,
-      return_date: form.return_date,
-      location: form.location,
-      note: form.note,
-      days,
-      manager_email: dbUser.manager_email,
-      email: dbUser.email,
-      leave_type_id: annualType?.id,
-    }),
+   body: JSON.stringify({
+  user_id: dbUser.id,
+  start_date: start_date_str,
+  end_date: end_date_str,
+  duration_type: form.duration_type,
+  return_date: form.return_date,
+  location: form.location,
+  note: form.note,
+  days,
+  manager_email: dbUser.manager_email,
+  email: dbUser.email,
+  leave_type_id: annualType?.id,
+  // NEW
+  enable_ooo: enableOOO,
+}),
+
   });
 
   const resultJson = await response.json();
@@ -367,7 +371,31 @@ async function handleSubmit(e) {
         <div>
         Talep edilen gün sayısı: <b>{calculateDays()}</b>
       </div>
-      <button
+      <div style={{ marginTop: 12 }}>
+  <label
+    style={{
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 10,
+      fontFamily: "Urbanist, Arial, sans-serif",
+      fontSize: 16,            // match inputStyle and rest of UI
+      color: "#434344",
+      lineHeight: 1.3
+    }}
+  >
+    <input
+      type="checkbox"
+      checked={enableOOO}
+      onChange={(e) => setEnableOOO(e.target.checked)}
+      style={{ marginTop: 2, width: 16, height: 16 }}
+    />
+    <span>
+      Onaylandığında otomatik <i>Out-of-Office</i> yanıtını etkinleştir (TR + EN)
+    </span>
+  </label>
+</div>
+
+<button
           type="submit"
           disabled={submitting}
           style={{

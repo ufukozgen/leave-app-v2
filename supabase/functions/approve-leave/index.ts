@@ -1,17 +1,20 @@
+// /supabase/functions/approve-leave/index.ts
+// Deno Edge Function: Approve a leave, create calendar event, send email, (optional) set OOO
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.0.0";
 import { sendGraphEmail } from "../helpers/sendGraphEmail.ts";
 import { createCalendarEvent } from "../helpers/createCalendarEvent.ts";
 
-// Ortak takvim e-posta adresi ortam değişkeninden alınır (Supabase'de "SHARED_CALENDAR_EMAIL" olarak eklenmeli!)
+// --------------------------- Config / CORS ---------------------------
 const sharedCalendarEmail = Deno.env.get("SHARED_CALENDAR_EMAIL");
 
-// CORS headers for browser support
 const allowedOrigins = [
   "https://leave-app-v2.vercel.app",
   "http://localhost:5173",
 ];
-function getCORSHeaders(origin) {
+
+function getCORSHeaders(origin: string) {
   return {
     "Access-Control-Allow-Origin": allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -19,30 +22,149 @@ function getCORSHeaders(origin) {
   };
 }
 
+// --------------------------- Microsoft Graph (OOO) ---------------------------
+// Try both naming schemes so you can reuse existing secrets without renaming
+const TENANT_ID =
+  Deno.env.get("MICROSOFT_TENANT_ID") ||
+  Deno.env.get("AZURE_TENANT_ID") ||
+  "";
+const CLIENT_ID =
+  Deno.env.get("MICROSOFT_CLIENT_ID") ||
+  Deno.env.get("AZURE_CLIENT_ID") ||
+  "";
+const CLIENT_SECRET =
+  Deno.env.get("MICROSOFT_CLIENT_SECRET") ||
+  Deno.env.get("AZURE_CLIENT_SECRET") ||
+  "";
 
+// If these are empty, OOO calls will fail (but approval flow will still continue)
+const GRAPH_TOKEN_URL = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
+const GRAPH_SCOPE = "https://graph.microsoft.com/.default";
+const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
+// Windows TZ ID required by Graph:
+const TURKEY_TZ = "Turkey Standard Time";
+
+async function getGraphToken(): Promise<string> {
+  const body = new URLSearchParams({
+    client_id: CLIENT_ID,
+    client_secret: CLIENT_SECRET,
+    scope: GRAPH_SCOPE,
+    grant_type: "client_credentials",
+  });
+
+  const res = await fetch(GRAPH_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Graph token error: ${res.status} ${txt}`);
+  }
+  const data = await res.json();
+  return data.access_token as string;
+}
+
+function addDaysISO(yyyyMmDd: string, days: number) {
+  const d = new Date(`${yyyyMmDd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+function toTR(yyyyMmDd: string) {
+  const [y, m, d] = yyyyMmDd.split("-");
+  return `${d}.${m}.${y}`;
+}
+
+function buildBilingualMessage(startISO: string, endISO: string, managerEmail?: string | null) {
+  const s = toTR(startISO);
+  const e = toTR(endISO);
+  const urgent = managerEmail ? ` (acil/urgent: ${managerEmail})` : "";
+  const tr = `Merhaba, ${s} - ${e} tarihleri arasında izindeyim${urgent}.\nDöndüğümde yanıtlayacağım.`;
+  const en = `Hello, I’m out of the office from ${s} to ${e}${urgent}.\nI will reply upon my return.`;
+  return `${tr}\n\n${en}`;
+}
+
+async function setOutOfOffice(opts: {
+  userEmail: string;
+  startDateISO: string;   // YYYY-MM-DD
+  endDateISO: string;     // YYYY-MM-DD
+  returnDateISO?: string; // YYYY-MM-DD (optional — if absent, we use day after end)
+  managerEmail?: string | null;
+}) {
+  // If secrets are missing, throw (caught later, non-blocking)
+  if (!TENANT_ID || !CLIENT_ID || !CLIENT_SECRET) {
+    throw new Error("Missing Graph secrets (TENANT_ID / CLIENT_ID / CLIENT_SECRET).");
+  }
+
+  const token = await getGraphToken();
+
+  // Schedule 09:00 on start date to 09:00 on return date (or day after end)
+  const startDateTime = `${opts.startDateISO}T09:00:00`;
+  const endISO = opts.returnDateISO ?? addDaysISO(opts.endDateISO, 1);
+  const endDateTime = `${endISO}T09:00:00`;
+
+  const message = buildBilingualMessage(opts.startDateISO, opts.endDateISO, opts.managerEmail);
+
+  const body = {
+    automaticRepliesSetting: {
+      status: "scheduled",
+      internalReplyMessage: message,
+      externalReplyMessage: message,
+      scheduledStartDateTime: { dateTime: startDateTime, timeZone: TURKEY_TZ },
+      scheduledEndDateTime: { dateTime: endDateTime, timeZone: TURKEY_TZ },
+      // externalAudience: "all" | "contactsOnly"  // optional
+    },
+  };
+
+  const res = await fetch(
+    `${GRAPH_BASE}/users/${encodeURIComponent(opts.userEmail)}/mailboxSettings`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }
+  );
+
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`setOutOfOffice failed: ${res.status} ${txt}`);
+  }
+}
+
+// --------------------------- Main Handler ---------------------------
 serve(async (req) => {
-    const origin = req.headers.get("origin") || "";
+  const origin = req.headers.get("origin") || "";
   const corsHeaders = getCORSHeaders(origin);
-  
+
   if (req.method === "OPTIONS") {
-    // CORS preflight isteği için
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
     const { request_id } = await req.json();
 
-    // JWT'yi header'dan al
+    if (!request_id) {
+      return new Response(JSON.stringify({ error: "request_id is required" }), {
+        status: 400,
+        headers: corsHeaders,
+      });
+    }
+
+    // JWT from Authorization header
     const authHeader = req.headers.get("authorization") || "";
     const jwt = authHeader.replace("Bearer ", "");
 
-    // Supabase bağlantısı (service role ile)
+    // Supabase client with service role (bypass RLS inside functions)
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Kullanıcı bilgisini JWT ile al
+    // Who is calling?
     const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
     if (userError || !user) {
       return new Response(JSON.stringify({ error: "Kullanıcı doğrulanamadı" }), {
@@ -51,10 +173,12 @@ serve(async (req) => {
       });
     }
 
-    // İzin kaydını al (tüm gerekli alanlar ile)
+    // Load leave request (include enable_ooo + return_date)
     const { data: leave, error: leaveError } = await supabase
       .from("leave_requests")
-      .select("id, user_id, manager_email, status, start_date, end_date, days, location, note, duration_type")
+      .select(
+        "id, user_id, manager_email, status, start_date, end_date, return_date, days, location, note, duration_type, enable_ooo"
+      )
       .eq("id", request_id)
       .maybeSingle();
 
@@ -65,7 +189,7 @@ serve(async (req) => {
       });
     }
 
-    // Yöneticinin veya admin'in bilgisi
+    // Caller role & permissions
     const { data: userRow } = await supabase
       .from("users")
       .select("role, email, name")
@@ -79,7 +203,6 @@ serve(async (req) => {
       });
     }
 
-    // Yetki kontrolü: sadece yönetici veya admin onaylayabilir
     const isManager = userRow.email === leave.manager_email;
     const isAdmin = userRow.role === "admin";
     if (!isManager && !isAdmin) {
@@ -88,11 +211,11 @@ serve(async (req) => {
         headers: corsHeaders,
       });
     }
-    
-    // Durumu 'Approved' olarak güncelle
+
+    // Approve the request
     const { error: updateError } = await supabase
       .from("leave_requests")
-      .update({ status: "Approved" })
+      .update({ status: "Approved", approval_date: new Date().toISOString() })
       .eq("id", request_id);
 
     if (updateError) {
@@ -102,7 +225,7 @@ serve(async (req) => {
       });
     }
 
-    // Log kaydı (audit trail)
+    // Audit log (non-blocking)
     try {
       await supabase.from("logs").insert([
         {
@@ -119,15 +242,14 @@ serve(async (req) => {
             days: leave.days,
             location: leave.location,
             note: leave.note,
-          }
-        }
+          },
+        },
       ]);
     } catch (logError) {
       console.error("Log kaydı başarısız:", logError);
-      // İsterseniz log hatasını engelleyebilirsiniz
     }
 
-    // Çalışan (izin sahibi) bilgisini al
+    // Employee (leave owner)
     const { data: employee } = await supabase
       .from("users")
       .select("email, name")
@@ -141,8 +263,8 @@ serve(async (req) => {
       });
     }
 
-    // Ortak takvime etkinlik oluştur (employee attendee)
-    let eventId = null;
+    // Create event on shared calendar
+    let eventId: string | null = null;
     try {
       const event = await createCalendarEvent({
         sharedCalendarEmail,
@@ -152,25 +274,38 @@ serve(async (req) => {
           start_date: leave.start_date,
           end_date: leave.end_date,
           duration_type: leave.duration_type,
-          note: leave.note          
-        }
+          note: leave.note,
+        },
       });
-      const eventId = event.id;
+      eventId = event?.id ?? null;
 
-      await supabase
-  .from("leave_requests")
-  .update({ calendar_event_id: eventId })
-  .eq("id", leave.id);
-
-
-      // Not: eventId bilgisini ileride silmek/iptal etmek için leave_requests tablosuna kaydedebilirsiniz
-      // await supabase.from("leave_requests").update({ calendar_event_id: eventId }).eq("id", leave.id);
+      if (eventId) {
+        await supabase
+          .from("leave_requests")
+          .update({ calendar_event_id: eventId })
+          .eq("id", leave.id);
+      }
     } catch (calendarError) {
       console.error("Takvim etkinliği oluşturulamadı:", calendarError);
-      // Takvim hatası olsa bile işleme devam edebilirsiniz
     }
 
-    // Çalışana e-posta gönder
+    // Optional: Set Out-of-Office if user opted in (non-blocking)
+    try {
+      if (leave.enable_ooo === true) {
+        await setOutOfOffice({
+          userEmail: employee.email,
+          startDateISO: leave.start_date,       // "YYYY-MM-DD"
+          endDateISO: leave.end_date,           // "YYYY-MM-DD"
+          returnDateISO: leave.return_date ?? undefined,
+          managerEmail: leave.manager_email ?? null,
+        });
+        console.log(`OOO scheduled for ${employee.email}`);
+      }
+    } catch (e) {
+      console.error("OOO scheduling failed (non-blocking):", e);
+    }
+
+    // Notify employee by email
     await sendGraphEmail({
       to: employee.email,
       subject: "İzin Talebiniz Onaylandı",
@@ -184,35 +319,34 @@ serve(async (req) => {
         </ul>
         <p>İyi tatiller dileriz!</p>
 
-              <br/>
-      <a href="https://leave-app-v2.vercel.app" 
-         style="
-           display:inline-block;
-           padding:10px 20px;
-           background:#F39200;
-           color:#fff;
-           border-radius:8px;
-           text-decoration:none;
-           font-weight:bold;
-           font-family:Calibri, Arial, sans-serif;
-           font-size:16px;
-           margin-top:10px;
-         ">
-         İzin Uygulamasına Git
-      </a>
-      `
-      // from eklemenize gerek yok, ortamdan çekilecek
+        <br/>
+        <a href="https://leave-app-v2.vercel.app"
+           style="
+             display:inline-block;
+             padding:10px 20px;
+             background:#F39200;
+             color:#fff;
+             border-radius:8px;
+             text-decoration:none;
+             font-weight:bold;
+             font-family:Calibri, Arial, sans-serif;
+             font-size:16px;
+             margin-top:10px;
+           ">
+           İzin Uygulamasına Git
+        </a>
+      `,
     });
 
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify({ success: true, calendar_event_id: eventId }), {
       status: 200,
       headers: corsHeaders,
     });
-
-  } catch (e) {
-    return new Response(JSON.stringify({ error: "Beklenmeyen hata: " + (e?.message || e) }), {
-      status: 500,
-      headers: corsHeaders,
-    });
+  } catch (e: any) {
+    console.error("approve-leave error:", e);
+    return new Response(
+      JSON.stringify({ error: "Beklenmeyen hata: " + (e?.message || String(e)) }),
+      { status: 500, headers: corsHeaders },
+    );
   }
 });

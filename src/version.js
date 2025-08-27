@@ -3,6 +3,21 @@
 export const RELEASES = [
   
   {
+  version: "v2.2.0",
+  date: "2025-08-28",
+  notes: [
+    "📧 İzin onayıyla otomatik Out-of-Office (OOO) yanıtları eklenmiştir (Türkçe + İngilizce standart mesaj)",
+    "☑️ Kullanıcılar izin talebi formunda OOO yanıtını etkinleştirmeyi seçebilir (opt-in)",
+    "🔄 Onaylanan izinlerde OOO otomatik başlatılır ve dönüş tarihinde kendiliğinden kapanır",
+    "❌ Kullanıcı tarafından iptal edilen veya yönetici tarafından geri alınan izinlerde OOO otomatik devre dışı bırakılır",
+    "👨‍💼 Reverse-leave mantığı güncellendi: Approved → Pending dönüşlerinde OOO kapatılır; Deducted → Approved dönüşlerinde OOO korunur",
+    "🛡️ Microsoft Graph entegrasyonu için güvenli uygulama izinleri (MailboxSettings.ReadWrite) ve token yönetimi eklendi",
+    "📜 Loglara enable_ooo bilgisi ve OOO aksiyonları kaydedilmektedir"
+  ],
+},
+
+  
+  {
   version: "v2.1.0",
   date: "2025-07-21",
   notes: [
@@ -13,7 +28,7 @@ export const RELEASES = [
     "🐞 AdminPanel'de yanlışlıkla 'Yıllık izin tipi tanımlı değil' hatasının yüklenme sırasında görünmesi engellendi (doğru loading göstergesi gösteriliyor)"
   ],
 },
-
+  
 
   
   {

@@ -71,6 +71,7 @@ serve(async (req) => {
       request_date: new Date().toISOString(),
       duration_type: body.duration_type,
       enable_ooo: enableOOO, // <-- persist the opt-in flag
+      ooo_custom_message: body.ooo_custom_message || null,
     };
 
     // Insert into leave_requests

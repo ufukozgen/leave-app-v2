@@ -13,7 +13,6 @@ const allowedOrigins = [
   "https://leave-app-v2.vercel.app",
   "http://localhost:5173",
 ];
-
 function getCORSHeaders(origin: string) {
   return {
     "Access-Control-Allow-Origin": allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
@@ -76,7 +75,7 @@ function toTR(yyyyMmDd: string) {
   return `${d}.${m}.${y}`;
 }
 
-function buildBilingualMessage(startISO: string, endISO: string, managerEmail?: string | null) {
+function buildDefaultMessage(startISO: string, endISO: string, managerEmail?: string | null) {
   const s = toTR(startISO);
   const e = toTR(endISO);
   const urgent = managerEmail ? ` (acil/urgent: ${managerEmail})` : "";
@@ -85,14 +84,14 @@ function buildBilingualMessage(startISO: string, endISO: string, managerEmail?: 
   return `${tr}\n\n${en}`;
 }
 
+// Accept a fully-built message (custom or default) to avoid scope issues
 async function setOutOfOffice(opts: {
   userEmail: string;
   startDateISO: string;   // YYYY-MM-DD
   endDateISO: string;     // YYYY-MM-DD
-  returnDateISO?: string; // YYYY-MM-DD (optional — if absent, we use day after end)
-  managerEmail?: string | null;
+  returnDateISO?: string; // YYYY-MM-DD (optional — if absent, day after end)
+  message: string;        // final text to set (custom or default)
 }) {
-  // If secrets are missing, throw (caught later, non-blocking)
   if (!TENANT_ID || !CLIENT_ID || !CLIENT_SECRET) {
     throw new Error("Missing Graph secrets (TENANT_ID / CLIENT_ID / CLIENT_SECRET).");
   }
@@ -104,16 +103,14 @@ async function setOutOfOffice(opts: {
   const endISO = opts.returnDateISO ?? addDaysISO(opts.endDateISO, 1);
   const endDateTime = `${endISO}T09:00:00`;
 
-  const message = buildBilingualMessage(opts.startDateISO, opts.endDateISO, opts.managerEmail);
-
   const body = {
     automaticRepliesSetting: {
       status: "scheduled",
-      internalReplyMessage: message,
-      externalReplyMessage: message,
+      internalReplyMessage: opts.message,
+      externalReplyMessage: opts.message,
       scheduledStartDateTime: { dateTime: startDateTime, timeZone: TURKEY_TZ },
-      scheduledEndDateTime: { dateTime: endDateTime, timeZone: TURKEY_TZ },
-      // externalAudience: "all" | "contactsOnly"  // optional
+      scheduledEndDateTime:   { dateTime: endDateTime,   timeZone: TURKEY_TZ },
+      // externalAudience: "all", // uncomment if you want external replies to go to everyone
     },
   };
 
@@ -173,11 +170,11 @@ serve(async (req) => {
       });
     }
 
-    // Load leave request (include enable_ooo + return_date)
+    // Load leave request (include enable_ooo, return_date, ooo_custom_message)
     const { data: leave, error: leaveError } = await supabase
       .from("leave_requests")
       .select(
-        "id, user_id, manager_email, status, start_date, end_date, return_date, days, location, note, duration_type, enable_ooo"
+        "id, user_id, email, manager_email, status, start_date, end_date, return_date, days, location, note, duration_type, enable_ooo, ooo_custom_message"
       )
       .eq("id", request_id)
       .maybeSingle();
@@ -227,24 +224,23 @@ serve(async (req) => {
 
     // Audit log (non-blocking)
     try {
-      await supabase.from("logs").insert([
-        {
-          user_id: user.id,
-          actor_email: user.email,
-          action: "approve_request",
-          target_table: "leave_requests",
-          target_id: leave.id,
-          status_before: leave.status,
-          status_after: "Approved",
-          details: {
-            start_date: leave.start_date,
-            end_date: leave.end_date,
-            days: leave.days,
-            location: leave.location,
-            note: leave.note,
-          },
+      await supabase.from("logs").insert([{
+        user_id: user.id,
+        actor_email: user.email,
+        action: "approve_request",
+        target_table: "leave_requests",
+        target_id: leave.id,
+        status_before: leave.status,
+        status_after: "Approved",
+        details: {
+          start_date: leave.start_date,
+          end_date: leave.end_date,
+          days: leave.days,
+          location: leave.location,
+          note: leave.note,
+          enable_ooo: leave.enable_ooo,
         },
-      ]);
+      }]);
     } catch (logError) {
       console.error("Log kaydı başarısız:", logError);
     }
@@ -292,12 +288,18 @@ serve(async (req) => {
     // Optional: Set Out-of-Office if user opted in (non-blocking)
     try {
       if (leave.enable_ooo === true) {
+        // Build final message: use custom if provided; else default bilingual
+        const oooMessage =
+          leave.ooo_custom_message && leave.ooo_custom_message.trim().length > 0
+            ? leave.ooo_custom_message
+            : buildDefaultMessage(leave.start_date, leave.end_date, leave.manager_email);
+
         await setOutOfOffice({
           userEmail: employee.email,
           startDateISO: leave.start_date,       // "YYYY-MM-DD"
           endDateISO: leave.end_date,           // "YYYY-MM-DD"
           returnDateISO: leave.return_date ?? undefined,
-          managerEmail: leave.manager_email ?? null,
+          message: oooMessage,
         });
         console.log(`OOO scheduled for ${employee.email}`);
       }

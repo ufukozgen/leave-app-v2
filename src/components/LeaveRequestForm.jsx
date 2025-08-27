@@ -20,6 +20,7 @@ export default function LeaveRequestForm() {
   const [holidaysMap, setHolidaysMap] = useState({});
   const [holidays, setHolidays] = useState([]);
   const [enableOOO, setEnableOOO] = useState(false);
+  const [oooCustomMessage, setOooCustomMessage] = useState("");
   const [form, setForm] = useState({
     start_date: null,
     end_date: null,
@@ -233,6 +234,7 @@ async function handleSubmit(e) {
   leave_type_id: annualType?.id,
   // NEW
   enable_ooo: enableOOO,
+  ooo_custom_message: oooCustomMessage || null,
 }),
 
   });
@@ -390,10 +392,40 @@ async function handleSubmit(e) {
       style={{ marginTop: 2, width: 16, height: 16 }}
     />
     <span>
-      Onaylandığında otomatik <i>Out-of-Office</i> yanıtını etkinleştir (TR + EN)
+      Onaylandığında otomatik <i>Out-of-Office</i> yanıtını etkinleştir
     </span>
   </label>
 </div>
+{enableOOO && (
+  <div style={{ marginTop: 12 }}>
+    <label
+      style={{
+        display: "block",
+        fontFamily: "Urbanist, Arial, sans-serif",
+        fontSize: 16,
+        color: "#434344",
+        marginBottom: 6,
+      }}
+    >
+      Out-of-Office mesajınız:
+    </label>
+    <textarea
+      value={oooCustomMessage}
+      onChange={(e) => setOooCustomMessage(e.target.value)}
+      rows={4}
+      style={{
+        width: "100%",
+        fontFamily: "Urbanist, Arial, sans-serif",
+        fontSize: 16,
+        padding: 8,
+        borderRadius: 6,
+        border: "1px solid #ccc",
+      }}
+      placeholder={`Merhaba, [başlangıç] - [bitiş] tarihleri arasında izindeyim.\nDöndüğümde yanıtlayacağım.\n\nHello, I’m out of the office from [start] to [end].\nI will reply upon my return.`}
+    />
+  </div>
+)}
+
 
 <button
           type="submit"

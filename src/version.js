@@ -3,6 +3,20 @@
 export const RELEASES = [
   
   {
+    version: "v2.2.2",
+    date: "2025-09-02",
+    notes: [
+      "🧠 OOO yeniden hesaplanıyor: tüm izinler taranarak birleşik pencere planlanıyor",
+      "❌ cancel-leave: e-posta bildirimleri, takvim silme ve bakiye iadesi geri geldi",
+      "↩️ reverse-leave: durum geri alınırken takvim ve bakiye güncelleniyor, OOO kontrolü yapılıyor",
+      "🚫 reject-leave: e-posta ve log düzeltildi, OOO güncelleniyor",
+      "📧 Tüm e-postalar Microsoft Graph ile gönderiliyor",
+      "🧩 Yardımcı dosyalar (helpers) artık fonksiyonlarla birlikte deploy ediliyor",
+    ],
+  },
+
+
+  {
   version: "v2.2.1",
   date: "2025-08-29",
   notes: [

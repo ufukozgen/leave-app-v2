@@ -1,6 +1,10 @@
 // /supabase/functions/cancel-leave/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.0.0";
+import { sendGraphEmail } from "../helpers/sendGraphEmail.ts";
+import { cancelCalendarEvent } from "../helpers/cancelCalendarEvent.ts";
+import { reconcileUserOOO } from "../helpers/reconcileUserOOO.ts";
+
 
 // --------------------------- CORS ---------------------------
 const allowedOrigins = [
@@ -18,16 +22,13 @@ function getCORSHeaders(origin: string) {
 // --------------------------- Microsoft Graph (disable OOO) ---------------------------
 const TENANT_ID =
   Deno.env.get("MICROSOFT_TENANT_ID") ||
-  Deno.env.get("AZURE_TENANT_ID") ||
-  "";
+  Deno.env.get("AZURE_TENANT_ID") || "";
 const CLIENT_ID =
   Deno.env.get("MICROSOFT_CLIENT_ID") ||
-  Deno.env.get("AZURE_CLIENT_ID") ||
-  "";
+  Deno.env.get("AZURE_CLIENT_ID") || "";
 const CLIENT_SECRET =
   Deno.env.get("MICROSOFT_CLIENT_SECRET") ||
-  Deno.env.get("AZURE_CLIENT_SECRET") ||
-  "";
+  Deno.env.get("AZURE_CLIENT_SECRET") || "";
 
 const GRAPH_TOKEN_URL = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
 const GRAPH_SCOPE = "https://graph.microsoft.com/.default";
@@ -49,6 +50,40 @@ async function getGraphToken(): Promise<string> {
   const data = await res.json();
   return data.access_token as string;
 }
+// Returns true if we should disable OOO after cancelling this leave.
+// We skip disabling if the user has another overlapping Pending/Approved leave with enable_ooo=true.
+async function shouldDisableOOOAfterCancel(
+  supabase: ReturnType<typeof createClient>,
+  params: { user_id: string; cancelled_id: string; start_date: string; end_date: string }
+): Promise<boolean> {
+  const { user_id, cancelled_id, start_date, end_date } = params;
+
+  // Find other leaves for this user that overlap [start_date, end_date]
+  // Overlap condition: other.start_date <= end_date AND other.end_date >= start_date
+  const { data: overlapping, error } = await supabase
+    .from("leave_requests")
+    .select("id")
+    .eq("user_id", user_id)
+    .neq("id", cancelled_id)
+    .eq("enable_ooo", true)
+    .in("status", ["Pending", "Approved"])
+    .lte("start_date", end_date) // start <= cancelled.end
+    .gte("end_date", start_date); // end >= cancelled.start
+
+  if (error) {
+    // On any read error, act conservatively: DO NOT disable OOO
+    console.error("OOO overlap check failed, skipping disable:", error);
+    return false;
+  }
+
+  // If there is any overlapping OOO-enabled leave, keep OOO on
+  if (overlapping && overlapping.length > 0) {
+    return false;
+  }
+
+  // Otherwise it's safe to disable OOO
+  return true;
+}
 
 async function disableOutOfOffice(userEmail: string) {
   if (!TENANT_ID || !CLIENT_ID || !CLIENT_SECRET) {
@@ -61,6 +96,61 @@ async function disableOutOfOffice(userEmail: string) {
     body: JSON.stringify({ automaticRepliesSetting: { status: "disabled" } }),
   });
   if (!res.ok) throw new Error(`disable OOO failed ${res.status}: ${await res.text()}`);
+}
+
+// --------------------------- Optional balance restore ---------------------------
+// Best-effort for two common schemas; safe to skip if your schema differs.
+async function restoreApprovedDays(
+  supabase: ReturnType<typeof createClient>,
+  user_id: string,
+  leave_type_id: string | null,
+  days: number | null
+) {
+  if (!leave_type_id || !days || days <= 0) return { restored: false, mode: "none" };
+
+  // Try A) row-per-type schema
+  try {
+    const { data: row } = await supabase
+      .from("user_leave_balances")
+      .select("remaining_days")
+      .eq("user_id", user_id)
+      .eq("leave_type_id", leave_type_id)
+      .maybeSingle();
+
+    if (row && typeof row.remaining_days !== "undefined") {
+      const newVal = Number(row.remaining_days || 0) + Number(days);
+      const { error: updErr } = await supabase
+        .from("user_leave_balances")
+        .update({ remaining_days: newVal })
+        .eq("user_id", user_id)
+        .eq("leave_type_id", leave_type_id);
+      if (!updErr) return { restored: true, mode: "row-per-type" };
+    }
+  } catch (_e) {
+    // fall through
+  }
+
+  // Try B) JSON aggregate schema
+  try {
+    const { data: jsonRow } = await supabase
+      .from("user_leave_balances")
+      .select("balances")
+      .eq("user_id", user_id)
+      .maybeSingle();
+
+    const balances = (jsonRow?.balances ?? {}) as Record<string, number>;
+    const current = Number(balances[leave_type_id] ?? 0);
+    balances[leave_type_id] = current + Number(days);
+
+    const { error: upsertErr } = await supabase
+      .from("user_leave_balances")
+      .upsert({ user_id, balances }, { onConflict: "user_id" });
+
+    if (!upsertErr) return { restored: true, mode: "jsonb" };
+    return { restored: false, mode: "jsonb:upsert-error", note: upsertErr?.message };
+  } catch (e: any) {
+    return { restored: false, mode: "jsonb:exception", note: e?.message || String(e) };
+  }
 }
 
 // --------------------------- Handler ---------------------------
@@ -87,15 +177,16 @@ serve(async (req) => {
     );
 
     // Who is calling?
-    const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
+    const { data: userResp, error: userError } = await supabase.auth.getUser(jwt);
+    const user = userResp?.user ?? null;
     if (userError || !user) {
       return new Response(JSON.stringify({ error: "Kullanıcı doğrulanamadı" }), { status: 401, headers: corsHeaders });
     }
 
-    // Load leave (need user_id, enable_ooo, dates, manager_email, email)
+    // Load leave (also need email for OOO + manager for perms + type/days for restore)
     const { data: leave, error: leaveError } = await supabase
       .from("leave_requests")
-      .select("id, user_id, email, manager_email, status, start_date, end_date, enable_ooo, calendar_event_id")
+      .select("id, user_id, email, manager_email, status, start_date, end_date, days, location, note, enable_ooo, calendar_event_id, leave_type_id")
       .eq("id", request_id)
       .maybeSingle();
 
@@ -103,61 +194,181 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Talep bulunamadı" }), { status: 404, headers: corsHeaders });
     }
 
-    // Permissions: employee can cancel own leave; admin can cancel anything; manager can cancel for their report
-    const { data: caller } = await supabase
+    // Actor info
+    const { data: actor } = await supabase
       .from("users")
-      .select("id, email, role")
+      .select("role, email, name")
       .eq("id", user.id)
       .maybeSingle();
 
-    const isOwner = user.id === leave.user_id;
-    const isAdmin = caller?.role === "admin";
-    const isManager = caller?.email === leave.manager_email;
+    if (!actor) {
+      return new Response(JSON.stringify({ error: "User not found" }), { status: 401, headers: corsHeaders });
+    }
 
-    if (!isOwner && !isAdmin && !isManager) {
+    // Permissions
+    const isOwner = user.id === leave.user_id;
+    const isManager = actor.email === leave.manager_email;
+    const isAdmin = actor.role === "admin";
+    if (!isOwner && !isManager && !isAdmin) {
       return new Response(JSON.stringify({ error: "Yetkiniz yok." }), { status: 403, headers: corsHeaders });
     }
 
-    // Update status to Cancelled
-    const { error: updErr } = await supabase
+    // Prevent invalid/double cancel
+    if (leave.status === "Cancelled") {
+      return new Response(JSON.stringify({ error: "Talep zaten iptal edilmiş." }), { status: 409, headers: corsHeaders });
+    }
+    if (!["Pending", "Approved"].includes(leave.status)) {
+      return new Response(JSON.stringify({ error: `Bu durumda iptal edilemez: ${leave.status}` }), { status: 409, headers: corsHeaders });
+    }
+
+    const statusBefore = leave.status;
+
+    // Cancel the leave (no cancel_date write)
+    const { error: updateError } = await supabase
       .from("leave_requests")
-      .update({ status: "Cancelled", cancel_date: new Date().toISOString() })
+      .update({ status: "Cancelled" })
       .eq("id", request_id);
 
-    if (updErr) {
-      return new Response(JSON.stringify({ error: "İptal başarısız" }), { status: 500, headers: corsHeaders });
+    if (updateError) {
+      return new Response(JSON.stringify({ error: "İptal güncellemesi başarısız" }), { status: 500, headers: corsHeaders });
     }
 
-    // Optional: remove shared calendar event if you store its id
-    // If you have a helper like cancelCalendarEvent, call it here with leave.calendar_event_id
-
-    // Disable OOO if it was enabled/scheduled
-    try {
-      if (leave.enable_ooo === true) {
-        await disableOutOfOffice(leave.email);
-        console.log(`OOO disabled for ${leave.email} due to cancellation`);
-      }
-    } catch (e) {
-      console.error("Failed to disable OOO:", e);
-    }
-
-    // Log
+    // Log the action
     try {
       await supabase.from("logs").insert([{
         user_id: user.id,
-        actor_email: caller?.email || user.email,
+        actor_email: actor.email,
         action: "cancel_request",
         target_table: "leave_requests",
         target_id: leave.id,
-        status_before: leave.status,
+        status_before: statusBefore,
         status_after: "Cancelled",
-        details: { enable_ooo: leave.enable_ooo, start_date: leave.start_date, end_date: leave.end_date },
+        details: {
+          start_date: leave.start_date,
+          end_date: leave.end_date,
+          days: leave.days,
+          location: leave.location,
+          note: leave.note,
+          enable_ooo: leave.enable_ooo
+        },
       }]);
-    } catch (logErr) {
-      console.error("Log kaydı başarısız:", logErr);
+    } catch (logError) {
+      console.error("Logging failed in cancel-leave:", logError);
     }
 
-    return new Response(JSON.stringify({ success: true }), { status: 200, headers: corsHeaders });
+    // If was Approved, try to restore balance (best-effort)
+    let balanceRestoreInfo: any = { restored: false, mode: "skipped" };
+    if (statusBefore === "Approved") {
+      balanceRestoreInfo = await restoreApprovedDays(
+        supabase,
+        leave.user_id,
+        leave.leave_type_id ?? null,
+        typeof leave.days === "number" ? leave.days : Number(leave.days ?? 0)
+      );
+    }
+
+    // Cancel shared calendar event if we have an id
+    try {
+      if (leave.calendar_event_id) {
+        await cancelCalendarEvent({ eventId: leave.calendar_event_id });
+      }
+    } catch (calendarError) {
+      console.error("Calendar event cancellation failed:", calendarError);
+    }
+
+    // Recompute OOO considering ALL remaining leaves
+try {
+  if (leave.email) {
+    await reconcileUserOOO(supabase, { user_id: leave.user_id, email: leave.email });
+  }
+} catch (e) {
+  console.error("reconcileUserOOO (after cancel) failed:", e);
+}
+
+
+
+    // Fetch employee + manager for email notifications
+    const [{ data: employee }, { data: manager }] = await Promise.all([
+      supabase.from("users").select("email, name").eq("id", leave.user_id).maybeSingle(),
+      supabase.from("users").select("email, name").eq("email", leave.manager_email).maybeSingle(),
+    ]);
+
+    // Email notifications (Turkish)
+    // 1) Notify employee
+    if (employee?.email) {
+      await sendGraphEmail({
+        to: employee.email,
+        subject: "İzin Talebiniz İptal Edildi",
+        html: `
+          <p>Sayın ${employee.name || employee.email},</p>
+          <p>Aşağıdaki izin talebiniz <b>iptal edildi</b>:</p>
+          <ul>
+            <li>Başlangıç: ${leave.start_date}</li>
+            <li>Bitiş: ${leave.end_date}</li>
+            <li>Gün: ${leave.days}</li>
+          </ul>
+          <p>Bilginize.</p>
+          <br/>
+          <a href="https://leave-app-v2.vercel.app"
+             style="
+               display:inline-block;
+               padding:10px 20px;
+               background:#F39200;
+               color:#fff;
+               border-radius:8px;
+               text-decoration:none;
+               font-weight:bold;
+               font-family:Calibri, Arial, sans-serif;
+               font-size:16px;
+               margin-top:10px;">
+            İzin Uygulamasına Git
+          </a>
+        `,
+      });
+    }
+
+    // 2) Notify manager only if it had been Approved
+    if (statusBefore === "Approved" && manager?.email) {
+      await sendGraphEmail({
+        to: manager.email,
+        subject: "Onayladığınız İzin Talebi İptal Edildi",
+        html: `
+          <p>Sayın ${manager.name || manager.email},</p>
+          <p>Onayladığınız aşağıdaki izin talebi iptal edilmiştir:</p>
+          <ul>
+            <li>Çalışan: ${employee?.name || employee?.email || "-"}</li>
+            <li>Başlangıç: ${leave.start_date}</li>
+            <li>Bitiş: ${leave.end_date}</li>
+            <li>Gün: ${leave.days}</li>
+          </ul>
+          <p>Bilginize.</p>
+          <br/>
+          <a href="https://leave-app-v2.vercel.app"
+             style="
+               display:inline-block;
+               padding:10px 20px;
+               background:#F39200;
+               color:#fff;
+               border-radius:8px;
+               text-decoration:none;
+               font-weight:bold;
+               font-family:Calibri, Arial, sans-serif;
+               font-size:16px;
+               margin-top:10px;">
+            İzin Uygulamasına Git
+          </a>
+        `,
+      });
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      cancelled_request_id: leave.id,
+      status_before: statusBefore,
+      status_after: "Cancelled",
+      balance_restore: balanceRestoreInfo,
+    }), { status: 200, headers: corsHeaders });
+
   } catch (e: any) {
     console.error("cancel-leave error:", e);
     return new Response(JSON.stringify({ error: "Beklenmeyen hata: " + (e?.message || String(e)) }), {

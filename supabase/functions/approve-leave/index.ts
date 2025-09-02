@@ -5,6 +5,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.0.0";
 import { sendGraphEmail } from "../helpers/sendGraphEmail.ts";
 import { createCalendarEvent } from "../helpers/createCalendarEvent.ts";
+import { reconcileUserOOO } from "../helpers/reconcileUserOOO.ts";
+
 
 // --------------------------- Config / CORS ---------------------------
 const sharedCalendarEmail = Deno.env.get("SHARED_CALENDAR_EMAIL");
@@ -287,26 +289,12 @@ serve(async (req) => {
 
     // Optional: Set Out-of-Office if user opted in (non-blocking)
     try {
-      if (leave.enable_ooo === true) {
-        // Build final message: use custom if provided; else default bilingual
-        const oooMessage =
-          leave.ooo_custom_message && leave.ooo_custom_message.trim().length > 0
-            ? leave.ooo_custom_message
-            : buildDefaultMessage(leave.start_date, leave.end_date, leave.manager_email);
-
-        await setOutOfOffice({
-          userEmail: employee.email,
-          startDateISO: leave.start_date,       // "YYYY-MM-DD"
-          endDateISO: leave.end_date,           // "YYYY-MM-DD"
-          returnDateISO: leave.return_date ?? undefined,
-          message: oooMessage,
-        });
-        console.log(`OOO scheduled for ${employee.email}`);
-      }
-    } catch (e) {
-      console.error("OOO scheduling failed (non-blocking):", e);
-    }
-
+  if (employee.email) {
+    await reconcileUserOOO(supabase, { user_id: employee.id, email: employee.email });
+  }
+} catch (e) {
+  console.error("reconcileUserOOO (after approve) failed:", e);
+}
     // Notify employee by email
     await sendGraphEmail({
       to: employee.email,

@@ -1,13 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.0.0";
 import { sendGraphEmail } from "../helpers/sendGraphEmail.ts";
+import { reconcileUserOOO } from "../helpers/reconcileUserOOO.ts";
 
 // CORS headers for browser support
 const allowedOrigins = [
   "https://leave-app-v2.vercel.app",
   "http://localhost:5173",
 ];
-function getCORSHeaders(origin) {
+function getCORSHeaders(origin: string) {
   return {
     "Access-Control-Allow-Origin": allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -15,10 +16,10 @@ function getCORSHeaders(origin) {
   };
 }
 
-
 serve(async (req) => {
-      const origin = req.headers.get("origin") || "";
+  const origin = req.headers.get("origin") || "";
   const corsHeaders = getCORSHeaders(origin);
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -27,13 +28,13 @@ serve(async (req) => {
     const { request_id, rejection_reason } = await req.json();
     const authHeader = req.headers.get("authorization") || "";
     const jwt = authHeader.replace("Bearer ", "");
-    
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Authenticate
+    // Authenticate actor (the person doing the reject)
     const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
     if (userError || !user) {
       console.log("Kullanıcı doğrulanamadı:", userError, user);
@@ -42,7 +43,7 @@ serve(async (req) => {
       });
     }
 
-    // Get leave request
+    // Load the leave request
     const { data: leave, error: leaveError } = await supabase
       .from("leave_requests")
       .select("id, user_id, status, manager_email, start_date, end_date, days, location, note")
@@ -56,7 +57,7 @@ serve(async (req) => {
       });
     }
 
-    // Get actor (the person doing the reject)
+    // Get actor record (role/email/name)
     const { data: actor } = await supabase
       .from("users")
       .select("role, email, name")
@@ -91,7 +92,7 @@ serve(async (req) => {
       .from("leave_requests")
       .update({
         status: "Rejected",
-        approval_date: new Date().toISOString(),
+        approval_date: new Date().toISOString(), // keeping your pattern of stamping this field
         rejection_reason: rejection_reason || null
       })
       .eq("id", request_id);
@@ -103,46 +104,53 @@ serve(async (req) => {
       });
     }
 
-    try {
-  await supabase.from("logs").insert([
-    {
-      user_id: user.id,              // the actor's user ID from JWT
-      actor_email: user.email,       // actor's email
-      action: "reject_request",         // e.g. "approve_request"
-      target_table: "leave_requests",
-      target_id: leave.id,
-      status_before: leave.status,  
-      status_after: "Rejected",      // new leave status string
-      details: {
-        start_date: leave.start_date,
-        end_date: leave.end_date,
-        days: leave.days,
-        location: leave.location,
-        note: leave.note,
-        rejection_reason: rejection_reason,
-        // add any other useful info
-      }
-    }
-  ]);
-} catch (logError) {
-  console.error("Failed to log action:", logError);
-  // Optional: handle logging failure gracefully without blocking main flow
-}
-
-
-    // Notify the employee
+    // Fetch employee (the owner of the leave)
     const { data: employee } = await supabase
       .from("users")
-      .select("email, name")
+      .select("id, email, name")
       .eq("id", leave.user_id)
       .maybeSingle();
 
-    if (employee) {
+    // Log the action
+    try {
+      await supabase.from("logs").insert([{
+        user_id: user.id,                  // actor (rejector)
+        actor_email: actor.email,          // use actor.email for consistency
+        action: "reject_request",
+        target_table: "leave_requests",
+        target_id: leave.id,
+        status_before: "Pending",
+        status_after: "Rejected",
+        details: {
+          start_date: leave.start_date,
+          end_date: leave.end_date,
+          days: leave.days,
+          location: leave.location,
+          note: leave.note,
+          rejection_reason: rejection_reason || null,
+        }
+      }]);
+    } catch (logError) {
+      console.error("Failed to log action:", logError);
+      // don't block main flow
+    }
+
+    // Reconcile OOO (harmless if your policy only considers Approved leaves)
+    try {
+      if (employee?.email) {
+        await reconcileUserOOO(supabase, { user_id: leave.user_id, email: employee.email });
+      }
+    } catch (e) {
+      console.error("reconcileUserOOO (after reject) failed:", e);
+    }
+
+    // Notify the employee by email
+    if (employee?.email) {
       await sendGraphEmail({
         to: employee.email,
         subject: "İzin Talebiniz Reddedildi",
         html: `
-          <p>Sayın ${employee.name},</p>
+          <p>Sayın ${employee.name || employee.email},</p>
           <p>Yöneticiniz aşağıdaki izin talebinizi <b>reddetti</b>:</p>
           <ul>
             <li>Başlangıç: ${leave.start_date}</li>
@@ -151,24 +159,22 @@ serve(async (req) => {
           </ul>
           ${rejection_reason ? `<p><b>Red Nedeni:</b> ${rejection_reason}</p>` : ""}
           <p>Detaylar için yöneticinizle görüşebilirsiniz.</p>
-
-                <br/>
-      <a href="https://leave-app-v2.vercel.app" 
-         style="
-           display:inline-block;
-           padding:10px 20px;
-           background:#F39200;
-           color:#fff;
-           border-radius:8px;
-           text-decoration:none;
-           font-weight:bold;
-           font-family:Calibri, Arial, sans-serif;
-           font-size:16px;
-           margin-top:10px;
-         ">
-         İzin Uygulamasına Git
-      </a>
-        `
+          <br/>
+          <a href="https://leave-app-v2.vercel.app" 
+             style="
+               display:inline-block;
+               padding:10px 20px;
+               background:#F39200;
+               color:#fff;
+               border-radius:8px;
+               text-decoration:none;
+               font-weight:bold;
+               font-family:Calibri, Arial, sans-serif;
+               font-size:16px;
+               margin-top:10px;">
+             İzin Uygulamasına Git
+          </a>
+        `,
       });
     }
 
@@ -176,11 +182,10 @@ serve(async (req) => {
       status: 200, headers: corsHeaders
     });
 
-  } catch (e) {
+  } catch (e: any) {
     console.log("reject-leave error:", e);
     return new Response(JSON.stringify({ error: "Beklenmeyen hata: " + (e?.message || e) }), {
-      status: 500,
-      headers: corsHeaders,
+      status: 500, headers: corsHeaders
     });
   }
 });

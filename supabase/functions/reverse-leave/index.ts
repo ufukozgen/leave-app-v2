@@ -3,8 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.0.0";
 import { sendGraphEmail } from "../helpers/sendGraphEmail.ts";
 import { cancelCalendarEvent } from "../helpers/cancelCalendarEvent.ts";
-
-const sharedCalendarEmail = Deno.env.get("SHARED_CALENDAR_EMAIL");
+import { reconcileUserOOO } from "../helpers/reconcileUserOOO.ts";
 
 // --------------------------- CORS ---------------------------
 const allowedOrigins = [
@@ -19,53 +18,65 @@ function getCORSHeaders(origin: string) {
   };
 }
 
-// --------------------------- Microsoft Graph (disable OOO) ---------------------------
-// Try both naming schemes so you can reuse existing secrets without renaming
-const TENANT_ID =
-  Deno.env.get("MICROSOFT_TENANT_ID") ||
-  Deno.env.get("AZURE_TENANT_ID") ||
-  "";
-const CLIENT_ID =
-  Deno.env.get("MICROSOFT_CLIENT_ID") ||
-  Deno.env.get("AZURE_CLIENT_ID") ||
-  "";
-const CLIENT_SECRET =
-  Deno.env.get("MICROSOFT_CLIENT_SECRET") ||
-  Deno.env.get("AZURE_CLIENT_SECRET") ||
-  "";
-
-const GRAPH_TOKEN_URL = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
-const GRAPH_SCOPE = "https://graph.microsoft.com/.default";
-const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
-
-async function getGraphToken(): Promise<string> {
-  const body = new URLSearchParams({
-    client_id: CLIENT_ID,
-    client_secret: CLIENT_SECRET,
-    scope: GRAPH_SCOPE,
-    grant_type: "client_credentials",
-  });
-  const res = await fetch(GRAPH_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
-  if (!res.ok) throw new Error(`Graph token error: ${res.status} ${await res.text()}`);
-  const data = await res.json();
-  return data.access_token as string;
-}
-
-async function disableOutOfOffice(userEmail: string) {
-  if (!TENANT_ID || !CLIENT_ID || !CLIENT_SECRET) {
-    throw new Error("Missing Graph secrets (TENANT_ID / CLIENT_ID / CLIENT_SECRET).");
+// --------------------------- Balance restore helper (best-effort) ---------------------------
+// Supports two common schemas without breaking the main flow:
+//  A) leave_balances(user_id, leave_type_id, used, remaining)
+//  B) user_leave_balances(user_id PK, balances jsonb: { "<leave_type_id>": number })
+async function restoreDaysToBalance(
+  supabase: ReturnType<typeof createClient>,
+  params: { user_id: string; leave_type_id: string | null; days: number | null }
+) {
+  const { user_id, leave_type_id, days } = params;
+  if (!leave_type_id || !days || days <= 0) {
+    return { restored: false, mode: "none" };
   }
-  const token = await getGraphToken();
-  const res = await fetch(`${GRAPH_BASE}/users/${encodeURIComponent(userEmail)}/mailboxSettings`, {
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ automaticRepliesSetting: { status: "disabled" } }),
-  });
-  if (!res.ok) throw new Error(`disable OOO failed ${res.status}: ${await res.text()}`);
+
+  // Try A) row/columns schema: leave_balances
+  try {
+    const { data: lb } = await supabase
+      .from("leave_balances")
+      .select("id, used, remaining")
+      .eq("user_id", user_id)
+      .eq("leave_type_id", leave_type_id)
+      .maybeSingle();
+
+    if (lb) {
+      const newUsed = Number(lb.used || 0) - Number(days);
+      const newRem = Number(lb.remaining || 0) + Number(days);
+      if (newUsed < 0) {
+        return { restored: false, mode: "leave_balances", note: "used would go negative; skipped" };
+      }
+      const { error: updErr } = await supabase
+        .from("leave_balances")
+        .update({ used: newUsed, remaining: newRem, last_updated: new Date().toISOString() })
+        .eq("id", lb.id);
+      if (!updErr) return { restored: true, mode: "leave_balances" };
+    }
+  } catch (_e) {
+    // fall through to JSON schema
+  }
+
+  // Try B) JSON schema: user_leave_balances(balances jsonb)
+  try {
+    const { data: row } = await supabase
+      .from("user_leave_balances")
+      .select("balances")
+      .eq("user_id", user_id)
+      .maybeSingle();
+
+    const balances = (row?.balances ?? {}) as Record<string, number>;
+    const current = Number(balances[leave_type_id] ?? 0);
+    balances[leave_type_id] = current + Number(days);
+
+    const { error: upsertErr } = await supabase
+      .from("user_leave_balances")
+      .upsert({ user_id, balances }, { onConflict: "user_id" });
+
+    if (!upsertErr) return { restored: true, mode: "user_leave_balances.jsonb" };
+    return { restored: false, mode: "user_leave_balances.jsonb", note: upsertErr?.message };
+  } catch (e: any) {
+    return { restored: false, mode: "user_leave_balances.jsonb", note: e?.message || String(e) };
+  }
 }
 
 // --------------------------- Handler ---------------------------
@@ -87,232 +98,199 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Who is calling?
+    // Auth (actor)
     const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
     if (userError || !user) {
       return new Response(JSON.stringify({ error: "Kullanıcı doğrulanamadı" }), {
-        status: 401,
-        headers: corsHeaders,
+        status: 401, headers: corsHeaders
       });
     }
 
-    // Select all needed fields (added: email, enable_ooo)
+    // Load leave (need email + enable_ooo for OOO, calendar_event_id, type/days for balance)
     const { data: leave, error: leaveError } = await supabase
       .from("leave_requests")
-      .select("id, user_id, email, leave_type_id, days, status, manager_email, start_date, end_date, enable_ooo, calendar_event_id, approval_date")
+      .select("id, user_id, email, leave_type_id, days, status, manager_email, start_date, end_date, enable_ooo, calendar_event_id, approval_date, deduction_date")
       .eq("id", request_id)
       .maybeSingle();
 
     if (leaveError || !leave) {
       return new Response(JSON.stringify({ error: "Talep bulunamadı" }), {
-        status: 404,
-        headers: corsHeaders,
+        status: 404, headers: corsHeaders
       });
     }
 
-    const { data: userRow } = await supabase
+    // Actor record (role/email)
+    const { data: actor } = await supabase
       .from("users")
       .select("role, email")
       .eq("id", user.id)
       .maybeSingle();
 
-    if (!userRow) {
+    if (!actor) {
       return new Response(JSON.stringify({ error: "Kullanıcı bulunamadı" }), {
-        status: 401,
-        headers: corsHeaders,
+        status: 401, headers: corsHeaders
       });
     }
 
-    const isManager = userRow.email === leave.manager_email;
-    const isAdmin = userRow.role === "admin";
+    // Only manager or admin can reverse
+    const isManager = actor.email === leave.manager_email;
+    const isAdmin = actor.role === "admin";
     if (!isManager && !isAdmin) {
       return new Response(JSON.stringify({ error: "Yetkiniz yok." }), {
-        status: 403,
-        headers: corsHeaders,
+        status: 403, headers: corsHeaders
       });
     }
 
-    if (leave.status !== "Deducted" && leave.status !== "Approved") {
+    // Only these statuses can be reversed
+    if (!["Approved", "Deducted"].includes(leave.status)) {
       return new Response(JSON.stringify({ error: "Sadece düşülen veya onaylanan izinler geri alınabilir." }), {
-        status: 400,
-        headers: corsHeaders,
+        status: 400, headers: corsHeaders
       });
     }
 
-    // New status and balance logic
-    let newStatus = "";
-    let doBalanceUpdate = false;
-    let shouldDisableOOO = false;
+    // Decide new status & side-effects
+    const statusBefore = leave.status;
+    let newStatus: "Pending" | "Approved";
+    let doBalanceRestore = false;
+    let shouldRemoveCalendar = false;
 
-    if (leave.status === "Deducted") {
-      newStatus = "Approved";   // revert deduction back to approved
-      doBalanceUpdate = true;   // restore balance
-      shouldDisableOOO = false; // OOO unaffected in this leg
-    } else if (leave.status === "Approved") {
-      newStatus = "Pending";    // move approved back to pending
-      doBalanceUpdate = false;
-      shouldDisableOOO = true;  // recommended: disable OOO when approval is reversed
+    if (leave.status === "Approved") {
+      // Reverse approval → back to Pending
+      newStatus = "Pending";
+      doBalanceRestore = false;
+      shouldRemoveCalendar = true;
+    } else {
+      // leave.status === "Deducted" → back to Approved and restore deducted days
+      newStatus = "Approved";
+      doBalanceRestore = true;
+      shouldRemoveCalendar = false;
     }
 
-    // If reverting a deduction, also restore balance!
-    if (doBalanceUpdate) {
-      const { data: balance, error: balanceError } = await supabase
-        .from("leave_balances")
-        .select("id, used, remaining")
-        .eq("user_id", leave.user_id)
-        .eq("leave_type_id", leave.leave_type_id)
-        .maybeSingle();
-
-      if (balanceError || !balance) {
-        return new Response(JSON.stringify({ error: "İzin bakiyesi bulunamadı" }), {
-          status: 404, headers: corsHeaders
-        });
-      }
-
-      const daysToRevert = Number(leave.days);
-      const newUsed = Number(balance.used) - daysToRevert;
-      const newRemaining = Number(balance.remaining) + daysToRevert;
-      if (newUsed < 0) {
-        return new Response(JSON.stringify({ error: "İzin bakiyesi geri alınamıyor (kullanılan gün negatif olur)" }), {
-          status: 400, headers: corsHeaders
-        });
-      }
-
-      const { error: updateError } = await supabase
-        .from("leave_balances")
-        .update({ used: newUsed, remaining: newRemaining, last_updated: new Date().toISOString() })
-        .eq("id", balance.id);
-
-      if (updateError) {
-        return new Response(JSON.stringify({ error: "Bakiyeler geri alınamadı" }), {
-          status: 500, headers: corsHeaders
-        });
-      }
+    // Balance restore if we are reverting from Deducted → Approved
+    let balanceRestoreInfo: any = { restored: false, mode: "skipped" };
+    if (doBalanceRestore) {
+      balanceRestoreInfo = await restoreDaysToBalance(supabase, {
+        user_id: leave.user_id,
+        leave_type_id: leave.leave_type_id ?? null,
+        days: typeof leave.days === "number" ? leave.days : Number(leave.days ?? 0),
+      });
     }
 
-    // If reverting Approved → Pending, remove calendar event if exists
-    if (leave.status === "Approved" && leave.calendar_event_id) {
+    // Remove calendar event if we’re undoing an Approval
+    if (shouldRemoveCalendar && leave.calendar_event_id) {
       try {
-        await cancelCalendarEvent({
-          sharedCalendarEmail,
-          eventId: leave.calendar_event_id
-        });
-      } catch (calendarError) {
-        console.error("Calendar event cancellation failed (reverse-leave):", calendarError);
+        await cancelCalendarEvent({ eventId: leave.calendar_event_id });
+      } catch (e) {
+        console.error("Calendar event cancellation failed (reverse-leave):", e);
       }
     }
 
-    // Update leave status (and clear approval_date if going back to Pending)
+    // Update leave status (and clear timers appropriately)
     const updatePayload: Record<string, any> = { status: newStatus };
     if (newStatus === "Pending") {
       updatePayload.approval_date = null;
     }
     if (newStatus === "Approved") {
-      // If you also store deduction_date, clear it here when reverting from Deducted
+      // If you track deduction timestamps, clear it when rolling back to Approved
       updatePayload.deduction_date = null;
     }
 
-    const { error: updateLeaveError } = await supabase
+    const { error: updateErr } = await supabase
       .from("leave_requests")
       .update(updatePayload)
       .eq("id", leave.id);
 
-    if (updateLeaveError) {
+    if (updateErr) {
       return new Response(JSON.stringify({ error: "Geri alma işlemi başarısız" }), {
-        status: 500,
-        headers: corsHeaders,
+        status: 500, headers: corsHeaders
       });
     }
 
-    // Disable OOO if appropriate and opted-in
+    // Reconcile OOO (this will DISABLE OOO if no other active OOO-worthy leaves remain)
     try {
-      if (shouldDisableOOO && leave.enable_ooo === true && leave.email) {
-        await disableOutOfOffice(leave.email);
-        console.log(`OOO disabled for ${leave.email} due to reverse`);
+      if (leave.email) {
+        await reconcileUserOOO(supabase, { user_id: leave.user_id, email: leave.email });
       }
     } catch (e) {
-      console.error("Failed to disable OOO on reverse:", e);
+      console.error("reconcileUserOOO (after reverse) failed:", e);
     }
 
-    // Log the action
+    // Log
     try {
       await supabase.from("logs").insert([{
         user_id: user.id,
-        actor_email: user.email,
-        action: leave.status === "Deducted" ? "revert_deducted_request" : "revert_approved_request",
+        actor_email: actor.email,
+        action: statusBefore === "Deducted" ? "revert_deducted_request" : "revert_approved_request",
         target_table: "leave_requests",
         target_id: leave.id,
-        status_before: leave.status,
+        status_before: statusBefore,
         status_after: newStatus,
         details: {
           start_date: leave.start_date,
           end_date: leave.end_date,
           days: leave.days,
           enable_ooo: leave.enable_ooo,
+          balance_restore: balanceRestoreInfo,
         },
       }]);
-    } catch (logError) {
-      console.error("Logging failed in reverse-leave:", logError);
+    } catch (logErr) {
+      console.error("Logging failed in reverse-leave:", logErr);
     }
 
-    // Notify leave owner by email
-    const { data: ownerUser } = await supabase
+    // Notify owner by email
+    const { data: owner } = await supabase
       .from("users")
-      .select("email")
+      .select("email, name")
       .eq("id", leave.user_id)
       .maybeSingle();
 
-    if (ownerUser?.email) {
-      let statusMessage = "";
+    if (owner?.email) {
+      let statusMsg: string;
+      let subject = "İzin Talebinizde Güncelleme";
+
       if (newStatus === "Approved") {
-        statusMessage = "İzin bakiyeniz güncellendi. İzniniz tekrar <b>ONAYLANDI</b> ve kesinti geri alındı.";
-      } else if (newStatus === "Pending") {
-        statusMessage = "İzniniz tekrar <b>BEKLEMEDE</b>. Onay geri alındı ve henüz onaylanmadı.";
+        statusMsg = "İzin talebiniz tekrar <b>ONAYLANDI</b> ve varsa kesinti geri alındı.";
       } else {
-        statusMessage = "İzin durumunuzda değişiklik yapıldı.";
+        statusMsg = "İzin talebiniz <b>BEKLEME</b> durumuna geri alındı (onay geri çekildi).";
       }
 
-      const emailSubject = "İzin Talebinizde Güncelleme";
-      const emailBody = `
-        <p>Sayın çalışan,</p>
-        <p>${leave.days} gün olarak talep ettiğiniz izninizde bir güncelleme yapıldı.</p>
-        <p>${statusMessage}</p>
-        <p>Daha fazla bilgi için lütfen yöneticinizle iletişime geçiniz.</p>
-
-        <br/>
-        <a href="https://leave-app-v2.vercel.app" 
-           style="
-             display:inline-block;
-             padding:10px 20px;
-             background:#F39200;
-             color:#fff;
-             border-radius:8px;
-             text-decoration:none;
-             font-weight:bold;
-             font-family:Calibri, Arial, sans-serif;
-             font-size:16px;
-             margin-top:10px;
-           ">
-           İzin Uygulamasına Git
-        </a>
-      `;
-
       await sendGraphEmail({
-        to: ownerUser.email,
-        subject: emailSubject,
-        html: emailBody,
+        to: owner.email,
+        subject,
+        html: `
+          <p>Sayın ${owner.name || owner.email},</p>
+          <p>${leave.start_date} – ${leave.end_date} tarihli ${leave.days} gün izin talebinizde değişiklik yapıldı.</p>
+          <p>${statusMsg}</p>
+          <br/>
+          <a href="https://leave-app-v2.vercel.app"
+             style="
+               display:inline-block;
+               padding:10px 20px;
+               background:#F39200;
+               color:#fff;
+               border-radius:8px;
+               text-decoration:none;
+               font-weight:bold;
+               font-family:Calibri, Arial, sans-serif;
+               font-size:16px;
+               margin-top:10px;">
+            İzin Uygulamasına Git
+          </a>
+        `,
       });
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return new Response(JSON.stringify({
+      success: true,
+      reversed_request_id: leave.id,
+      status_before: statusBefore,
+      status_after: newStatus,
+      balance_restore: balanceRestoreInfo,
+    }), { status: 200, headers: corsHeaders });
 
   } catch (e: any) {
-    return new Response(JSON.stringify({ error: "Beklenmeyen hata: " + (e?.message || String(e)) }), {
-      status: 500,
-      headers: corsHeaders,
+    return new Response(JSON.stringify({ error: "Beklenmeyen hata: " + (e?.message || e) }), {
+      status: 500, headers: corsHeaders
     });
   }
 });

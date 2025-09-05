@@ -2,6 +2,16 @@
 
 export const RELEASES = [
   
+  {
+  version: "v2.2.4",
+  date: "2025-09-05",
+  notes: [
+    "📂 Sürüm geçmişi kutusu artık iç içe açılır kapanır (accordion) yapı destekliyor",
+    "👁️‍🗨️ Yalnızca bir sürüm detayı açık kalır, varsayılan olarak son sürüm gösterilir",
+    "🎞️ Yumuşak geçiş animasyonları eklendi (framer-motion)"
+  ],
+},
+
 {
   version: "v2.2.3",
   date: "2025-09-05",

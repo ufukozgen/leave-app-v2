@@ -29,6 +29,7 @@ export default function LeaveRequestForm() {
     location: "",
     note: "",
   });
+  const [openVersion, setOpenVersion] = useState(RELEASES[0]?.version);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState("");
 
@@ -474,18 +475,19 @@ async function handleSubmit(e) {
         </div>
         
       )}
-    <div
+<div
   style={{
     margin: "28px 0",
     background: "#F8FBFD",
     border: "1px solid #CDE5F4",
     borderRadius: 12,
     padding: 22,
-    maxWidth: 420,
+    maxWidth: 520,
     boxShadow: "0 2px 16px #a8d2f433",
     fontSize: 15,
   }}
 >
+  {/* OUTER ACCORDION HEADER */}
   <div
     style={{
       display: "flex",
@@ -503,18 +505,19 @@ async function handleSubmit(e) {
     aria-expanded={showHistory}
     aria-controls="release-history"
   >
-    <span>
-      Güncel Sürüm: {latestRelease.version}
-    </span>
-    <span style={{
-      marginLeft: "auto",
-      fontSize: 22,
-      color: "#A8D2F2",
-      transform: showHistory ? "rotate(90deg)" : "rotate(0deg)",
-      transition: "transform 0.2s"
-    }}>▶</span>
+    <span>Güncel Sürüm: {RELEASES[0]?.version}</span>
+    <span
+      style={{
+        marginLeft: "auto",
+        fontSize: 22,
+        color: "#A8D2F2",
+        transform: showHistory ? "rotate(90deg)" : "rotate(0deg)",
+        transition: "transform 0.2s"
+      }}
+    >▶</span>
   </div>
 
+  {/* OUTER ACCORDION CONTENT */}
   <AnimatePresence initial={false}>
     {showHistory && (
       <motion.div
@@ -522,31 +525,84 @@ async function handleSubmit(e) {
         initial={{ height: 0, opacity: 0 }}
         animate={{ height: "auto", opacity: 1 }}
         exit={{ height: 0, opacity: 0 }}
-        style={{
-          overflow: "hidden",
-          marginTop: 10
-        }}
+        style={{ overflow: "hidden", marginTop: 10 }}
         transition={{ duration: 0.28, ease: [0.43, 0.13, 0.23, 0.96] }}
       >
+        {/* NESTED ACCORDIONS (one per version) */}
         <div>
-          {RELEASES.map(r => (
-            <div key={r.version} style={{ marginBottom: 12 }}>
-              <b style={{ color: "#F39200" }}>
-                {r.version}
-                <span style={{ color: "#818285", fontWeight: 400, fontSize: 13, marginLeft: 6 }}>
-                  ({r.date})
-                </span>
-              </b>
-              <ul style={{ marginLeft: 18, marginTop: 2 }}>
-                {r.notes.map((n, i) => <li key={i}>{n}</li>)}
-              </ul>
-            </div>
-          ))}
+          {RELEASES.map(r => {
+            const isOpen = openVersion === r.version;
+            return (
+              <div
+                key={r.version}
+                style={{
+                  border: "1px solid #CDE5F4",
+                  borderRadius: 10,
+                  padding: 10,
+                  marginBottom: 10,
+                  background: "#FFFFFF"
+                }}
+              >
+                {/* Version header (click to expand/collapse this version only) */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setOpenVersion(v => v === r.version ? null : r.version)}
+                  onKeyDown={(e) => {
+                    if (e.key === " " || e.key === "Enter") setOpenVersion(v => v === r.version ? null : r.version);
+                  }}
+                  aria-expanded={isOpen}
+                  aria-controls={`release-${r.version}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    cursor: "pointer",
+                    gap: 10
+                  }}
+                >
+                  <b style={{ color: "#F39200" }}>
+                    {r.version}
+                    <span style={{ color: "#818285", fontWeight: 400, fontSize: 13, marginLeft: 6 }}>
+                      ({r.date})
+                    </span>
+                  </b>
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: 18,
+                      color: "#74B4DE",
+                      transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                      transition: "transform 0.2s"
+                    }}
+                  >▶</span>
+                </div>
+
+                {/* Version body */}
+                <AnimatePresence initial={false}>
+                  {isOpen && (
+                    <motion.div
+                      id={`release-${r.version}`}
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      style={{ overflow: "hidden" }}
+                      transition={{ duration: 0.22 }}
+                    >
+                      <ul style={{ marginLeft: 18, marginTop: 8 }}>
+                        {r.notes.map((n, i) => <li key={i}>{n}</li>)}
+                      </ul>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
         </div>
       </motion.div>
     )}
   </AnimatePresence>
 </div>
+
 
 </>
   );

@@ -2,6 +2,21 @@
 
 export const RELEASES = [
   
+{
+  version: "v2.2.3",
+  date: "2025-09-05",
+  notes: [
+    "🗄️ Admin: Leave balance yedekleme sekmesi eklendi (AdminBackups)",
+    "📆 Aylık snapshot listesi, kişi arama ve filtreleme desteği",
+    "↕️ Tablo sıralama: kullanıcı adı ve tarih",
+    "📤 CSV/JSON dışa aktarma (UTF-8, Türkçe karakter uyumlu)",
+    "🔍 Satır detayı görüntüleme ve tekil dışa aktarma seçenekleri",
+    "📋 Backup log'ları listeleniyor (başarı/hata ve satır sayısı)",
+    "🛠️ Edge Function yedekleme script'i yeni tablo şemasına uyarlandı (snapshot_date + snapshot_ts)",
+  ],
+},
+
+
   {
     version: "v2.2.2",
     date: "2025-09-02",

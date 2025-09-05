@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 
-// --- Styling helpers (brand colors) ---
+// --- Brand colors ---
 const COLORS = {
   orange: "#F39200",
   lightBlue: "#A8D2F2",
@@ -14,6 +14,7 @@ const COLORS = {
   yellow: "#F0B357",
 };
 
+// --- UI bits ---
 function SectionHeader({ title, right }) {
   return (
     <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", margin:"16px 0"}}>
@@ -44,15 +45,15 @@ function Pill({ children, tone="info" }) {
   );
 }
 
-// --- Export helpers ---
-function downloadBlob(filename, payload, type="text/plain") {
+// --- Helpers ---
+const toDateOnly = (iso) => (iso ? iso.slice(0, 10) : "");
+function downloadBlob(filename, payload, type="text/plain;charset=utf-8") {
   const blob = new Blob([payload], { type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
-
 function jsonToCsv(rows) {
   if (!rows?.length) return "";
   const headers = Object.keys(rows[0]);
@@ -65,54 +66,62 @@ function jsonToCsv(rows) {
   const body = rows.map(r => headers.map(h => escape(r[h])).join(",")).join("\n");
   return head + "\n" + body;
 }
+const addUtf8Bom = (text) => "\uFEFF" + text; // Excel-friendly for Turkish chars
 
-const addUtf8Bom = (text) => "\uFEFF" + text; // for Excel + Turkish chars
-
-// --- Core component ---
+// --- Component ---
 export default function AdminBackups() {
   const [loading, setLoading] = useState(false);
   const [monthISO, setMonthISO] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
   });
-  const [backups, setBackups] = useState([]);
-  const [logs, setLogs] = useState([]);
+
+  const [backups, setBackups] = useState([]);   // rows from v_leave_balance_backups
+  const [logs, setLogs] = useState([]);         // rows from v_leave_backup_logs
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
   const [leaveTypes, setLeaveTypes] = useState([]);
   const [usersById, setUsersById] = useState({});
 
-  const [sortField, setSortField] = useState("created_at_ts"); // "created_at_ts" | "user_name" | "user_email"
+  // Sorting — default by run_ts/created_at_ts (so manual backups with same snapshot date sort correctly)
+  const [sortField, setSortField] = useState("created_at_ts"); // "created_at_ts" | "user_name" | "user_email" | "snapshot_date"
   const [sortAsc, setSortAsc] = useState(false);
 
+  // Month bounds (UTC) and date-only bounds for DATE column filters
   const startEnd = useMemo(() => {
     if (!monthISO) return {};
     const [y,m] = monthISO.split("-").map(Number);
     const start = new Date(Date.UTC(y, m-1, 1, 0,0,0));
     const end = new Date(Date.UTC(y, m, 1, 0,0,0)); // exclusive
-    return { start: start.toISOString(), end: end.toISOString() };
+    return {
+      start: start.toISOString(),
+      end: end.toISOString(),
+      startD: toDateOnly(start.toISOString()),
+      endD: toDateOnly(end.toISOString())
+    };
   }, [monthISO]);
 
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
       try {
-        // 1) Leave types (for pretty names in balances)
+        // 1) Leave types (for pretty labels)
         const { data: lt } = await supabase.from("leave_types").select("id,name");
         setLeaveTypes(lt ?? []);
 
-        // 2) Backups for selected month (normalized view with timestamptz)
+        // 2) Backups for month: filter by snapshot_date (DATE), include both timestamps
         const { data: b, error: be } = await supabase
           .from("v_leave_balance_backups")
-          .select("id, created_at_ts, user_id, user_name, user_email, balances")
-          .gte("created_at_ts", startEnd.start)
-          .lt("created_at_ts",  startEnd.end)
-          .order("created_at_ts", { ascending: false });
+          .select("id, snapshot_date, created_at_ts, run_ts, user_id, user_name, user_email, balances")
+          .gte("snapshot_date", startEnd.startD)
+          .lt("snapshot_date",  startEnd.endD)
+          .order("snapshot_date", { ascending: false })
+          .order("run_ts", { ascending: false, nullsFirst: false });
 
         if (be) throw be;
         setBackups(b ?? []);
 
-        // 3) Logs for selected month (normalized view with timestamptz)
+        // 3) Logs for month (timestamp filters OK)
         const { data: l, error: le } = await supabase
           .from("v_leave_backup_logs")
           .select("id, created_at_ts, status, details, row_count")
@@ -122,18 +131,12 @@ export default function AdminBackups() {
 
         if (le) throw le;
 
-        // 4) Normalize / set logs
-        const logsNorm = (l ?? []).map(row => ({
-          ...row,
-          details: row.details
-        }));
+        const logsNorm = (l ?? []).map(row => ({ ...row, details: row.details }));
         setLogs(logsNorm);
 
-        // 5) Quick user map (optional)
+        // 4) Quick map (optional)
         const byId = {};
-        (b ?? []).forEach(row => {
-          byId[row.user_id] = { name: row.user_name, email: row.user_email };
-        });
+        (b ?? []).forEach(row => { byId[row.user_id] = { name: row.user_name, email: row.user_email }; });
         setUsersById(byId);
 
       } catch (e) {
@@ -145,11 +148,11 @@ export default function AdminBackups() {
     };
 
     fetchAll();
-  }, [startEnd.start, startEnd.end]);
+  }, [startEnd.start, startEnd.end, startEnd.startD, startEnd.endD]);
 
   const leaveTypeName = (id) => leaveTypes.find(x=>x.id===id)?.name || id;
 
-  // Filter (search by name/email)
+  // Search filter
   const filtered = useMemo(() => {
     if (!search.trim()) return backups;
     const s = search.toLowerCase();
@@ -159,15 +162,24 @@ export default function AdminBackups() {
     );
   }, [backups, search]);
 
-  // Sort (on top of filtered)
+  // Sorter — for time, prefer run_ts, fallback to created_at_ts
   const sorted = useMemo(() => {
     const arr = [...filtered];
     arr.sort((a,b) => {
-      const va = sortField === "created_at_ts" ? new Date(a.created_at_ts).getTime() : ((a[sortField] || "") + "");
-      const vb = sortField === "created_at_ts" ? new Date(b.created_at_ts).getTime() : ((b[sortField] || "") + "");
+      let va, vb;
+      if (sortField === "created_at_ts") {
+        va = new Date(a.run_ts || a.created_at_ts).getTime();
+        vb = new Date(b.run_ts || b.created_at_ts).getTime();
+      } else if (sortField === "snapshot_date") {
+        va = a.snapshot_date || "";
+        vb = b.snapshot_date || "";
+      } else {
+        va = ((a[sortField] || "") + "");
+        vb = ((b[sortField] || "") + "");
+      }
       if (va < vb) return sortAsc ? -1 : 1;
       if (va > vb) return sortAsc ?  1 : -1;
-      return 0;
+      return (a.id || "").localeCompare(b.id || ""); // stable tiebreaker
     });
     return arr;
   }, [filtered, sortField, sortAsc]);
@@ -175,11 +187,11 @@ export default function AdminBackups() {
   // --- Exports ---
   const exportMonthCSV = () => {
     const rows = sorted.map(r => ({
-      created_at: new Date(r.created_at_ts).toISOString().replace(".000Z","Z"),
+      snapshot_date: r.snapshot_date,
+      run_time_utc: r.run_ts ? new Date(r.run_ts).toISOString().replace(".000Z","Z") : "",
       user_name: r.user_name,
       user_email: r.user_email,
-      balances: Object
-        .entries(r.balances || {})
+      balances: Object.entries(r.balances || {})
         .map(([k,v]) => `${leaveTypeName(k)}: ${v}`)
         .join(" | "),
     }));
@@ -197,22 +209,26 @@ export default function AdminBackups() {
 
   const exportOneCSV = (row) => {
     const rows = [{
-      created_at: new Date(row.created_at_ts).toISOString().replace(".000Z","Z"),
+      snapshot_date: row.snapshot_date,
+      run_time_utc: row.run_ts ? new Date(row.run_ts).toISOString().replace(".000Z","Z") : "",
       user_name: row.user_name,
       user_email: row.user_email,
       ...Object.fromEntries(Object.entries(row.balances||{}).map(([k,v]) => [leaveTypeName(k), v])),
     }];
     const csv = jsonToCsv(rows);
+    // include time to make filename unique when same snapshot_date has multiple runs
+    const timeSuffix = row.run_ts ? "_" + new Date(row.run_ts).toISOString().slice(11,19).replace(/:/g,"") : "";
     downloadBlob(
-      `leave-backup-${row.user_email}-${row.created_at_ts}.csv`,
+      `leave-backup-${row.user_email}-${row.snapshot_date}${timeSuffix}.csv`,
       addUtf8Bom(csv),
       "text/csv;charset=utf-8"
     );
   };
 
   const exportOneJSON = (row) => {
+    const timeSuffix = row.run_ts ? "_" + new Date(row.run_ts).toISOString().slice(11,19).replace(/:/g,"") : "";
     downloadBlob(
-      `leave-backup-${row.user_email}-${row.created_at_ts}.json`,
+      `leave-backup-${row.user_email}-${row.snapshot_date}${timeSuffix}.json`,
       JSON.stringify(row, null, 2),
       "application/json;charset=utf-8"
     );
@@ -271,6 +287,7 @@ export default function AdminBackups() {
             <button
               onClick={() => { setSortAsc(sortField==="created_at_ts" ? !sortAsc : false); setSortField("created_at_ts"); }}
               style={{border:"none", background:"transparent", fontWeight:600, cursor:"pointer"}}
+              title="Sort by run time (or snapshot time)"
             >
               Created At {sortField==="created_at_ts" ? (sortAsc ? "▲" : "▼") : ""}
             </button>
@@ -298,7 +315,15 @@ export default function AdminBackups() {
               ))}
             </div>
 
-            <div style={{fontFamily:"Urbanist, system-ui", fontSize:13}}>{new Date(row.created_at_ts).toISOString().replace(".000Z","Z")}</div>
+            {/* Show snapshot date; small subtext shows run time HH:MM:SSZ if available */}
+            <div style={{fontFamily:"Urbanist, system-ui", fontSize:13}} title={row.run_ts ? `Run: ${new Date(row.run_ts).toISOString()}` : undefined}>
+              {row.snapshot_date}
+              {row.run_ts && (
+                <div style={{fontSize:12, opacity:0.7}}>
+                  ({new Date(row.run_ts).toISOString().slice(11,19)}Z)
+                </div>
+              )}
+            </div>
 
             <div style={{display:"flex", justifyContent:"flex-end", gap:8}}>
               <button
@@ -375,7 +400,8 @@ export default function AdminBackups() {
             </div>
             <div style={{fontFamily:"Urbanist", marginBottom:12, color:COLORS.grayDark}}>
               <div><strong>User:</strong> {selected.user_name} &lt;{selected.user_email}&gt;</div>
-              <div><strong>Created:</strong> {new Date(selected.created_at_ts).toISOString().replace(".000Z","Z")}</div>
+              <div><strong>Snapshot date:</strong> {selected.snapshot_date}</div>
+              <div><strong>Run time (UTC):</strong> {new Date(selected.run_ts || selected.created_at_ts).toISOString().replace(".000Z","Z")}</div>
             </div>
             <div style={{background:COLORS.veryLightBlue, padding:12, borderRadius:8, fontFamily:"Calibri, system-ui"}}>
               {Object.entries(selected.balances||{}).map(([k,v])=>(

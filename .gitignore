@@ -33,3 +33,5 @@ set-admin-claim.js
 leave-app-v2.git.bfg-report/
 
 bfg-*.jar
+
+*.sql

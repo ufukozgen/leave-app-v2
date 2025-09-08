@@ -9,6 +9,12 @@ type BalanceRow = {
   users: { name: string | null; email: string | null } | null;
 };
 
+type ApprovalAggRow = {
+  user_id: string;
+  leave_type_id: string | null;
+  approved_days: number | null;
+};
+
 serve(async (req) => {
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -25,15 +31,15 @@ serve(async (req) => {
     }
   }
 
-  // Optional: allow ?date=YYYY-MM-DD to backfill a specific snapshot_date
+  // Optional backfill: ?date=YYYY-MM-DD  (stored in snapshot_date)
   const url = new URL(req.url);
-  const dateParam = url.searchParams.get("date"); // "2025-09-01"
+  const dateParam = url.searchParams.get("date"); // e.g. "2025-09-01"
   const nowUtc = new Date();
   const snapshotDateISO = dateParam ?? nowUtc.toISOString().slice(0, 10); // YYYY-MM-DD
-  const snapshotTsISO = nowUtc.toISOString(); // full timestamp
+  const snapshotTsISO = nowUtc.toISOString(); // full timestamptz
 
-  // 1) fetch balances + user info
-  const { data: balances, error: fetchError } = await supabase
+  // 1) current balances + user info
+  const { data: balances, error: fetchBalancesErr } = await supabase
     .from("leave_balances")
     .select(
       `
@@ -47,22 +53,50 @@ serve(async (req) => {
     `
     );
 
-  if (fetchError) {
+  if (fetchBalancesErr) {
     await supabase.from("leave_backup_logs").insert({
-      run_at: new Date().toISOString(),
-      row_count: 0,
+      created_at_ts: new Date().toISOString(),
       status: "error",
-      error_message: fetchError.message,
+      row_count: 0,
+      details: `fetch balances failed: ${fetchBalancesErr.message}`
     });
-    return new Response(JSON.stringify({ error: fetchError.message }), {
+    return new Response(JSON.stringify({ error: fetchBalancesErr.message }), {
       status: 500,
     });
   }
 
+  // 2) approvals snapshot (status = 'Approved' → treat as "approved but not deducted")
+  //    Sums the 'days' field per user & leave_type_id.
+  const { data: approvalsAgg, error: fetchApprovalsErr } = await supabase
+    .from("leave_requests")
+    .select("user_id, leave_type_id, days")
+    .eq("status", "Approved");
+
+  if (fetchApprovalsErr) {
+    await supabase.from("leave_backup_logs").insert({
+      created_at_ts: new Date().toISOString(),
+      status: "error",
+      row_count: 0,
+      details: `fetch approvals failed: ${fetchApprovalsErr.message}`
+    });
+    return new Response(JSON.stringify({ error: fetchApprovalsErr.message }), {
+      status: 500,
+    });
+  }
+
+  // Reduce approvals to a map: user_id -> { leave_type_id: sumDays }
+  const approvalsGrouped: Record<string, Record<string, number>> = {};
+  (approvalsAgg as { user_id: string; leave_type_id: string | null; days: number | null }[]).forEach((r) => {
+    if (!r.user_id || !r.leave_type_id) return;
+    if (!approvalsGrouped[r.user_id]) approvalsGrouped[r.user_id] = {};
+    const prev = approvalsGrouped[r.user_id][r.leave_type_id] ?? 0;
+    approvalsGrouped[r.user_id][r.leave_type_id] = prev + (typeof r.days === "number" ? r.days : 0);
+  });
+
   const safeNum = (v: unknown) =>
     typeof v === "number" && Number.isFinite(v) ? v : 0;
 
-  // 2) group per user -> { leaveTypeId: remaining }
+  // 3) group balances per user: user_id -> { name, email, balance:{leave_type_id: remaining} }
   const grouped: Record<
     string,
     { name: string | null; email: string | null; balance: Record<string, number> }
@@ -76,43 +110,46 @@ serve(async (req) => {
         balance: {},
       };
     }
-    grouped[uid].balance[row.leave_type_id] = safeNum(row.remaining);
+    if (row.leave_type_id) {
+      grouped[uid].balance[row.leave_type_id] = safeNum(row.remaining);
+    }
   });
 
-  // 3) build insert payload (supports both schemas: with or without snapshot_ts)
+  // 4) build insert payload, including approvals (jsonb)
   const backups = Object.entries(grouped).map(([user_id, { name, email, balance }]) => ({
     user_id,
     name,
     email,
-    balance,                  // jsonb column (or text -> jsonb cast on view)
+    balances: balance,             // jsonb
+    approvals: approvalsGrouped[user_id] ?? {}, // jsonb
     snapshot_date: snapshotDateISO, // DATE
-    // If you added `snapshot_ts timestamptz` (see migration below) it will be used too:
-    snapshot_ts: snapshotTsISO,     // timestamptz (ignored if column doesn't exist)
+    snapshot_ts: snapshotTsISO,     // timestamptz
+    run_ts: snapshotTsISO,
   }));
 
-  // 4) insert in one go (small teams) or chunk if needed
-  const { error: insertError } = await supabase
+  // 5) insert
+  const { error: insertErr } = await supabase
     .from("leave_balance_backups")
     .insert(backups, { defaultToNull: false });
 
-  if (insertError) {
+  if (insertErr) {
     await supabase.from("leave_backup_logs").insert({
-      run_at: new Date().toISOString(),
-      row_count: 0,
+      created_at_ts: new Date().toISOString(),
       status: "error",
-      error_message: insertError.message,
+      row_count: 0,
+      details: `insert backups failed: ${insertErr.message}`
     });
-    return new Response(JSON.stringify({ error: insertError.message }), {
+    return new Response(JSON.stringify({ error: insertErr.message }), {
       status: 500,
     });
   }
 
-  // 5) log success
+  // 6) log success
   await supabase.from("leave_backup_logs").insert({
-    run_at: new Date().toISOString(),
-    row_count: backups.length,
+    created_at_ts: new Date().toISOString(),
     status: "success",
-    error_message: null,
+    row_count: backups.length,
+    details: { snapshot_date: snapshotDateISO }
   });
 
   return new Response(

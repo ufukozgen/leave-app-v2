@@ -76,14 +76,14 @@ export default function AdminBackups() {
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
   });
 
-  const [backups, setBackups] = useState([]);   // rows from v_leave_balance_backups
+  const [backups, setBackups] = useState([]);   // rows from v_leave_backups_with_approvals
   const [logs, setLogs] = useState([]);         // rows from v_leave_backup_logs
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
   const [leaveTypes, setLeaveTypes] = useState([]);
   const [usersById, setUsersById] = useState({});
 
-  // Sorting — default by run_ts/created_at_ts (so manual backups with same snapshot date sort correctly)
+  // Sorting — default by run_ts/created_at_ts (so manual backups on same date sort correctly)
   const [sortField, setSortField] = useState("created_at_ts"); // "created_at_ts" | "user_name" | "user_email" | "snapshot_date"
   const [sortAsc, setSortAsc] = useState(false);
 
@@ -109,10 +109,10 @@ export default function AdminBackups() {
         const { data: lt } = await supabase.from("leave_types").select("id,name");
         setLeaveTypes(lt ?? []);
 
-        // 2) Backups for month: filter by snapshot_date (DATE), include both timestamps
+        // 2) Backups for month: filter by snapshot_date (DATE), include approvals json
         const { data: b, error: be } = await supabase
-          .from("v_leave_balance_backups")
-          .select("id, snapshot_date, created_at_ts, run_ts, user_id, user_name, user_email, balances")
+          .from("v_leave_backups_with_approvals")
+          .select("id, snapshot_date, created_at_ts, run_ts, user_id, user_name, user_email, balances, approvals")
           .gte("snapshot_date", startEnd.startD)
           .lt("snapshot_date",  startEnd.endD)
           .order("snapshot_date", { ascending: false })
@@ -194,6 +194,9 @@ export default function AdminBackups() {
       balances: Object.entries(r.balances || {})
         .map(([k,v]) => `${leaveTypeName(k)}: ${v}`)
         .join(" | "),
+      approvals_not_deducted: Object.entries(r.approvals || {})
+        .map(([k,v]) => `${leaveTypeName(k)}: ${v}`)
+        .join(" | "),
     }));
     const csv = jsonToCsv(rows);
     downloadBlob(`leave-backups-${monthISO}.csv`, addUtf8Bom(csv), "text/csv;charset=utf-8");
@@ -213,7 +216,10 @@ export default function AdminBackups() {
       run_time_utc: row.run_ts ? new Date(row.run_ts).toISOString().replace(".000Z","Z") : "",
       user_name: row.user_name,
       user_email: row.user_email,
+      // Wide columns: balances by friendly leave type name
       ...Object.fromEntries(Object.entries(row.balances||{}).map(([k,v]) => [leaveTypeName(k), v])),
+      // And approvals as "<Leave Type> (approved)"
+      ...Object.fromEntries(Object.entries(row.approvals||{}).map(([k,v]) => [`${leaveTypeName(k)} (approved)`, v])),
     }];
     const csv = jsonToCsv(rows);
     // include time to make filename unique when same snapshot_date has multiple runs
@@ -273,7 +279,7 @@ export default function AdminBackups() {
       />
 
       <div style={{background: "#fff", border:`1px solid ${COLORS.lightBlue}`, borderRadius:12, overflow:"hidden"}}>
-        <div style={{display:"grid", gridTemplateColumns:"220px 1fr 160px 140px", gap:0, background:COLORS.veryLightBlue, padding:"10px 12px", fontWeight:600, fontFamily:"Urbanist"}}>
+        <div style={{display:"grid", gridTemplateColumns:"220px 1fr 1fr 160px 140px", gap:0, background:COLORS.veryLightBlue, padding:"10px 12px", fontWeight:600, fontFamily:"Urbanist"}}>
           <div>
             <button
               onClick={() => { setSortAsc(sortField==="user_name" ? !sortAsc : true); setSortField("user_name"); }}
@@ -283,6 +289,7 @@ export default function AdminBackups() {
             </button>
           </div>
           <div>Balances (by leave type)</div>
+          <div>Approved (not deducted)</div>
           <div>
             <button
               onClick={() => { setSortAsc(sortField==="created_at_ts" ? !sortAsc : false); setSortField("created_at_ts"); }}
@@ -302,12 +309,13 @@ export default function AdminBackups() {
         )}
 
         {!loading && sorted.map(row => (
-          <div key={row.id} style={{display:"grid", gridTemplateColumns:"220px 1fr 160px 140px", gap:0, padding:"10px 12px", borderTop:"1px solid #eee", alignItems:"center"}}>
+          <div key={row.id} style={{display:"grid", gridTemplateColumns:"220px 1fr 1fr 160px 140px", gap:0, padding:"10px 12px", borderTop:"1px solid #eee", alignItems:"center"}}>
             <div style={{display:"flex", flexDirection:"column"}}>
               <strong style={{fontFamily:"Urbanist"}}>{row.user_name || "(no name)"}</strong>
               <span style={{fontFamily:"Calibri, system-ui", fontSize:12, color:COLORS.gray}}>{row.user_email}</span>
             </div>
 
+            {/* Balances */}
             <div style={{fontFamily:"Calibri, system-ui", fontSize:14}}>
               {Object.keys(row.balances||{}).length === 0 && <span style={{color:COLORS.gray}}>(empty)</span>}
               {Object.entries(row.balances||{}).map(([k,v]) => (
@@ -315,7 +323,15 @@ export default function AdminBackups() {
               ))}
             </div>
 
-            {/* Show snapshot date; small subtext shows run time HH:MM:SSZ if available */}
+            {/* Approved (not deducted) */}
+            <div style={{fontFamily:"Calibri, system-ui", fontSize:14}}>
+              {Object.keys(row.approvals||{}).length === 0 && <span style={{color:COLORS.gray}}>(none)</span>}
+              {Object.entries(row.approvals||{}).map(([k,v]) => (
+                <Pill key={k} tone="warn">{leaveTypeName(k)}: <strong style={{marginLeft:4}}>{v}</strong></Pill>
+              ))}
+            </div>
+
+            {/* Snapshot date with run time subtext */}
             <div style={{fontFamily:"Urbanist, system-ui", fontSize:13}} title={row.run_ts ? `Run: ${new Date(row.run_ts).toISOString()}` : undefined}>
               {row.snapshot_date}
               {row.run_ts && (
@@ -389,7 +405,7 @@ export default function AdminBackups() {
         >
           <div
             onClick={(e)=>e.stopPropagation()}
-            style={{background:"#fff", borderRadius:12, maxWidth:720, width:"100%", padding:16, border:`2px solid ${COLORS.lightBlue}`}}
+            style={{background:"#fff", borderRadius:12, maxWidth:780, width:"100%", padding:16, border:`2px solid ${COLORS.lightBlue}`}}
           >
             <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
               <h3 style={{margin:0, fontFamily:"Urbanist"}}>Snapshot Details</h3>
@@ -403,6 +419,8 @@ export default function AdminBackups() {
               <div><strong>Snapshot date:</strong> {selected.snapshot_date}</div>
               <div><strong>Run time (UTC):</strong> {new Date(selected.run_ts || selected.created_at_ts).toISOString().replace(".000Z","Z")}</div>
             </div>
+
+            <h4 style={{margin:"8px 0 6px 0", fontFamily:"Urbanist", color:COLORS.grayDark}}>Balances</h4>
             <div style={{background:COLORS.veryLightBlue, padding:12, borderRadius:8, fontFamily:"Calibri, system-ui"}}>
               {Object.entries(selected.balances||{}).map(([k,v])=>(
                 <div key={k} style={{marginBottom:6}}>
@@ -411,6 +429,17 @@ export default function AdminBackups() {
               ))}
               {(!selected.balances || Object.keys(selected.balances).length===0) && <em>(No balances)</em>}
             </div>
+
+            <h4 style={{margin:"12px 0 6px 0", fontFamily:"Urbanist", color:COLORS.grayDark}}>Approved (not deducted)</h4>
+            <div style={{background:"#fff", border:`1px dashed ${COLORS.lightBlue}`, padding:12, borderRadius:8, fontFamily:"Calibri, system-ui"}}>
+              {Object.entries(selected.approvals||{}).map(([k,v])=>(
+                <div key={k} style={{marginBottom:6}}>
+                  <strong>{leaveTypeName(k)}</strong>: {v}
+                </div>
+              ))}
+              {(!selected.approvals || Object.keys(selected.approvals).length===0) && <em>(None)</em>}
+            </div>
+
             <div style={{display:"flex", gap:8, marginTop:12}}>
               <button
                 onClick={()=>exportOneCSV(selected)}

@@ -1,7 +1,18 @@
 // src/version.js
 
 export const RELEASES = [
-  
+  {
+  version: "v2.2.5",
+  date: "2025-09-08",
+  notes: [
+    "📊 AdminBackups artık Onaylanan (henüz düşülmemiş) izinleri de gösteriyor",
+    "📥 leave_balance_backups tablosuna approvals ve balances kolonları eklendi",
+    "📦 backup-leave-balances fonksiyonu snapshot sırasında onaylı günleri de yedekliyor",
+    "🛠️ Yeni view: v_leave_backups_with_approvals (UI'nın kullandığı kaynak)",
+    "📤 CSV/JSON dışa aktarma, her kullanıcı için bakiye + onaylı günleri içeriyor"
+  ],
+},
+
   {
   version: "v2.2.4",
   date: "2025-09-05",

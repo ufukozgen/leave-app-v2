@@ -29,9 +29,10 @@ export default function EmployeeLeaveConsole({ managerEmail, email, role }) {
   useEffect(() => {
   async function fetchUsers() {
     let query = supabase.from("users").select("id, email, manager_email");
-    if (role !== "admin") {
-      query = query.eq("manager_email", managerEmail);
-    }
+   if (role !== "admin") {
+  query = query.eq("manager_email", email);
+}
+
     const { data, error } = await query;
     // Sort by first name (using displayName)
     const sorted = (data || []).sort((a, b) => {

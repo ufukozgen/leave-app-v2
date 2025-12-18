@@ -26,24 +26,31 @@ export default function EmployeeLeaveConsole({ managerEmail, email, role }) {
 
 
   // Fetch subordinates of this manager
-  useEffect(() => {
+useEffect(() => {
   async function fetchUsers() {
     let query = supabase.from("users").select("id, email, manager_email");
-   if (role !== "admin") {
-  query = query.eq("manager_email", email);
-}
+
+    if (role !== "admin") {
+      query = query.eq("manager_email", email); // your last fix
+    }
 
     const { data, error } = await query;
-    // Sort by first name (using displayName)
+
+    console.log("[subordinates] viewer:", { role, email, managerEmail });
+    console.log("[subordinates] result:", { count: data?.length, data, error });
+
     const sorted = (data || []).sort((a, b) => {
       const aName = formatDisplayName(a.email).toLowerCase();
       const bName = formatDisplayName(b.email).toLowerCase();
       return aName.localeCompare(bName, "tr");
     });
+
     setSubordinates(sorted);
   }
+
   fetchUsers();
-}, [managerEmail, role]);
+}, [email, managerEmail, role]);
+
 
 
   // Fetch leave requests & balance when a subordinate is picked

@@ -2,6 +2,17 @@
 
 export const RELEASES = [
   {
+  version: "v2.2.6",
+  date: "2025-09-18",
+  notes: [
+  "👥 Yönetici ekranında ekip listesi sorunu giderildi",
+  "🛡️ Yetkilendirme kuralları iyileştirildi",
+  "🐞 Küçük ama kritik hata düzeltmeleri"
+],
+},
+
+  
+  {
   version: "v2.2.5",
   date: "2025-09-08",
   notes: [

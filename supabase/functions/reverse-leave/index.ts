@@ -1,4 +1,3 @@
-// /supabase/functions/reverse-leave/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.0.0";
 import { sendGraphEmail } from "../helpers/sendGraphEmail.ts";
@@ -12,8 +11,11 @@ const allowedOrigins = [
 ];
 function getCORSHeaders(origin: string) {
   return {
-    "Access-Control-Allow-Origin": allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Origin": allowedOrigins.includes(origin)
+      ? origin
+      : allowedOrigins[0],
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
   };
 }
@@ -43,13 +45,26 @@ async function restoreDaysToBalance(
     if (lb) {
       const newUsed = Number(lb.used || 0) - Number(days);
       const newRem = Number(lb.remaining || 0) + Number(days);
+
+      // NOTE: you previously prevented used < 0.
+      // Keep this behavior to avoid weirdness, but if you want to allow it, remove this check.
       if (newUsed < 0) {
-        return { restored: false, mode: "leave_balances", note: "used would go negative; skipped" };
+        return {
+          restored: false,
+          mode: "leave_balances",
+          note: "used would go negative; skipped",
+        };
       }
+
       const { error: updErr } = await supabase
         .from("leave_balances")
-        .update({ used: newUsed, remaining: newRem, last_updated: new Date().toISOString() })
+        .update({
+          used: newUsed,
+          remaining: newRem,
+          last_updated: new Date().toISOString(),
+        })
         .eq("id", lb.id);
+
       if (!updErr) return { restored: true, mode: "leave_balances" };
     }
   } catch (_e) {
@@ -106,10 +121,13 @@ serve(async (req) => {
       });
     }
 
-    // Load leave (need email + enable_ooo for OOO, calendar_event_id, type/days for balance)
+    // Load leave
+    // ✅ ADD deducted_days here (critical)
     const { data: leave, error: leaveError } = await supabase
       .from("leave_requests")
-      .select("id, user_id, email, leave_type_id, days, status, manager_email, start_date, end_date, enable_ooo, calendar_event_id, approval_date, deduction_date")
+      .select(
+        "id, user_id, email, leave_type_id, days, deducted_days, status, manager_email, start_date, end_date, enable_ooo, calendar_event_id, approval_date, deduction_date"
+      )
       .eq("id", request_id)
       .maybeSingle();
 
@@ -160,11 +178,17 @@ serve(async (req) => {
       doBalanceRestore = false;
       shouldRemoveCalendar = true;
     } else {
-      // leave.status === "Deducted" → back to Approved and restore deducted days
+      // Deducted → back to Approved and restore what was actually deducted
       newStatus = "Approved";
       doBalanceRestore = true;
       shouldRemoveCalendar = false;
     }
+
+    // ✅ Restore the ACTUAL deducted amount (deducted_days), fallback to days for older records
+    const daysToRestore =
+      typeof leave.deducted_days === "number"
+        ? leave.deducted_days
+        : Number(leave.deducted_days ?? leave.days ?? 0);
 
     // Balance restore if we are reverting from Deducted → Approved
     let balanceRestoreInfo: any = { restored: false, mode: "skipped" };
@@ -172,7 +196,7 @@ serve(async (req) => {
       balanceRestoreInfo = await restoreDaysToBalance(supabase, {
         user_id: leave.user_id,
         leave_type_id: leave.leave_type_id ?? null,
-        days: typeof leave.days === "number" ? leave.days : Number(leave.days ?? 0),
+        days: daysToRestore,
       });
     }
 
@@ -187,12 +211,16 @@ serve(async (req) => {
 
     // Update leave status (and clear timers appropriately)
     const updatePayload: Record<string, any> = { status: newStatus };
+
     if (newStatus === "Pending") {
       updatePayload.approval_date = null;
     }
     if (newStatus === "Approved") {
-      // If you track deduction timestamps, clear it when rolling back to Approved
       updatePayload.deduction_date = null;
+
+      // Optional but recommended: clear deducted_days when you undo deduction,
+      // so UI/records don't look "still deducted".
+      updatePayload.deducted_days = null;
     }
 
     const { error: updateErr } = await supabase
@@ -206,7 +234,7 @@ serve(async (req) => {
       });
     }
 
-    // Reconcile OOO (this will DISABLE OOO if no other active OOO-worthy leaves remain)
+    // Reconcile OOO
     try {
       if (leave.email) {
         await reconcileUserOOO(supabase, { user_id: leave.user_id, email: leave.email });
@@ -228,7 +256,9 @@ serve(async (req) => {
         details: {
           start_date: leave.start_date,
           end_date: leave.end_date,
-          days: leave.days,
+          requested_days: leave.days,
+          deducted_days: leave.deducted_days,
+          restored_days: doBalanceRestore ? daysToRestore : 0,
           enable_ooo: leave.enable_ooo,
           balance_restore: balanceRestoreInfo,
         },
@@ -249,7 +279,7 @@ serve(async (req) => {
       let subject = "İzin Talebinizde Güncelleme";
 
       if (newStatus === "Approved") {
-        statusMsg = "İzin talebiniz tekrar <b>ONAYLANDI</b> ve varsa kesinti geri alındı.";
+        statusMsg = `İzin talebiniz tekrar <b>ONAYLANDI</b> ve varsa kesinti (<b>${daysToRestore}</b> gün) geri alındı.`;
       } else {
         statusMsg = "İzin talebiniz <b>BEKLEME</b> durumuna geri alındı (onay geri çekildi).";
       }
@@ -259,7 +289,14 @@ serve(async (req) => {
         subject,
         html: `
           <p>Sayın ${owner.name || owner.email},</p>
-          <p>${leave.start_date} – ${leave.end_date} tarihli ${leave.days} gün izin talebinizde değişiklik yapıldı.</p>
+          <p>${leave.start_date} – ${leave.end_date} tarihli izin talebinizde değişiklik yapıldı.</p>
+          <ul>
+            <li>Talep Edilen Gün: <b>${leave.days}</b></li>
+            ${statusBefore === "Deducted"
+              ? `<li>Kesilen Gün: <b>${daysToRestore}</b></li>`
+              : ""
+            }
+          </ul>
           <p>${statusMsg}</p>
           <br/>
           <a href="https://leave-app-v2.vercel.app"
@@ -285,6 +322,7 @@ serve(async (req) => {
       reversed_request_id: leave.id,
       status_before: statusBefore,
       status_after: newStatus,
+      restored_days: doBalanceRestore ? daysToRestore : 0,
       balance_restore: balanceRestoreInfo,
     }), { status: 200, headers: corsHeaders });
 

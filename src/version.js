@@ -2,6 +2,14 @@
 
 export const RELEASES = [
   {
+  version: "v2.2.7",
+  date: "2025-12-30",
+  notes: [
+    "Resmi tatil / yarım gün güncellemeleri izin düşümlerinde doğru şekilde hesaplanıyor.",
+    "İzin düşümü ve geri alma işlemlerinde bakiye artık doğru gün sayısı üzerinden güncelleniyor."
+  ],
+},
+{
   version: "v2.2.6",
   date: "2025-12-18",
   notes: [

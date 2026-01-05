@@ -19,6 +19,37 @@ function getCORSHeaders(origin: string) {
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
   };
 }
+function jsonResponse(
+  body: unknown,
+  status: number,
+  corsHeaders: Record<string, string>,
+) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders },
+  });
+}
+
+async function assertUserIsActive(
+  supabase: any,
+  userId: string,
+  corsHeaders: Record<string, string>,
+  message = "User is archived",
+) {
+  const { data, error } = await supabase
+    .from("users")
+    .select("is_active")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) return jsonResponse({ error: "User lookup failed" }, 500, corsHeaders);
+
+  if (!data || data.is_active === false) {
+    return jsonResponse({ error: message }, 403, corsHeaders);
+  }
+
+  return null;
+}
 
 serve(async (req) => {
   const origin = req.headers.get("origin") || "";
@@ -50,6 +81,11 @@ serve(async (req) => {
         headers: corsHeaders,
       });
     }
+// ✅ Actor guard: caller must be active
+{
+  const blocked = await assertUserIsActive(supabase, user.id, corsHeaders);
+  if (blocked) return blocked;
+}
 
     // Fetch leave request (include location/note because you log them)
     const { data: leave, error: leaveError } = await supabase
@@ -66,6 +102,18 @@ serve(async (req) => {
         headers: corsHeaders,
       });
     }
+// ✅ Target guard: request owner must be active (recommended)
+{
+  const blockedTarget = await assertUserIsActive(
+    supabase,
+    leave.user_id,
+    corsHeaders,
+    "Target user is archived",
+  );
+  if (blockedTarget) {
+    return jsonResponse({ error: "Target user is archived" }, 409, corsHeaders);
+  }
+}
 
     // Actor role check
     const { data: userRow } = await supabase

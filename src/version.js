@@ -2,6 +2,17 @@
 
 export const RELEASES = [
   {
+  version: "v2.3.0",
+  date: "2026-01-05",
+  notes: [
+    "👤 Çalışan arşivleme özelliği eklendi (is_active, archived_at, archived_reason)",
+    "🗂️ Arşivlenen kullanıcılar aktif listelerden otomatik gizleniyor",
+    "🛡️ Arşivli kullanıcılar artık sistemde hiçbir işlem yapamaz (server-side koruma)",
+    "🚫 create / approve / reject / cancel / deduct / reverse işlemleri için Edge Function guard’ları eklendi",
+    "📜 Arşivleme işlemleri loglanıyor, geçmiş izin ve bakiye kayıtları korunuyor",
+  ],
+},
+{
   version: "v2.2.7",
   date: "2025-12-30",
   notes: [

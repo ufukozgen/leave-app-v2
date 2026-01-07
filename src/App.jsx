@@ -15,7 +15,7 @@ import { Toaster } from "react-hot-toast";
 
 export default function App() {
   const [tab, setTab] = useState("request");
-  const { dbUser } = useUser();
+  const { dbUser, loading } = useUser();
 
   const [pendingCount, setPendingCount] = useState(0);
   const [approvedCount, setApprovedCount] = useState(0);
@@ -142,6 +142,76 @@ if (!isLoggedIn) {
             <a href="/privacy.html" style={{ color: "#0056b3", marginLeft: 8 }}>Gizlilik Politikası</a>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+// --- ARCHIVED USER BLOCK ---
+if (!loading && dbUser && dbUser.is_active === false) {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#f8fbfd",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "Urbanist, Arial, sans-serif",
+      }}
+    >
+      <div
+        style={{
+          background: "#fff",
+          padding: "48px 44px",
+          borderRadius: 22,
+          boxShadow: "0 0 32px #cde5f4",
+          textAlign: "center",
+          minWidth: 380,
+          maxWidth: 460,
+        }}
+      >
+        <div style={{ fontWeight: 900, fontSize: 26, color: "#E0653A", marginBottom: 12 }}>
+          Hesap Pasif
+        </div>
+
+        <div style={{ color: "#434344", fontSize: 16, marginBottom: 22, lineHeight: 1.5 }}>
+          Kullanıcı hesabınız arşivlenmiştir.<br />
+          İzin uygulamasına erişiminiz kapatılmıştır.
+        </div>
+
+        {dbUser.archived_reason && (
+          <div
+            style={{
+              background: "#FFF2DC",
+              color: "#434344",
+              borderRadius: 10,
+              padding: "10px 14px",
+              marginBottom: 20,
+              fontSize: 15,
+            }}
+          >
+            <b>Bilgi:</b> {dbUser.archived_reason}
+          </div>
+        )}
+
+        <button
+          onClick={async () => {
+            await supabase.auth.signOut();
+            window.location.reload();
+          }}
+          style={{
+            background: "#E0653A",
+            color: "#fff",
+            fontWeight: 700,
+            border: "none",
+            borderRadius: 10,
+            padding: "12px 36px",
+            fontSize: 18,
+            cursor: "pointer",
+          }}
+        >
+          Çıkış Yap
+        </button>
       </div>
     </div>
   );

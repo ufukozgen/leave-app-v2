@@ -39,17 +39,21 @@ function Section({ title, children, right }) {
 function Pill({ tone = "info", children }) {
   const border = { info: COLORS.blue, warn: COLORS.yellow, error: COLORS.red, ok: "#2e7d32" }[tone] || COLORS.blue;
   return (
-    <span style={{
-      display: "inline-block",
-      border: `1px solid ${border}`,
-      background: COLORS.veryLightBlue,
-      borderRadius: 999,
-      padding: "3px 8px",
-      fontSize: 12,
-      fontFamily: "Urbanist, system-ui",
-      color: COLORS.grayDark,
-      marginLeft: 6
-    }}>{children}</span>
+    <span
+      style={{
+        display: "inline-block",
+        border: `1px solid ${border}`,
+        background: COLORS.veryLightBlue,
+        borderRadius: 999,
+        padding: "3px 8px",
+        fontSize: 12,
+        fontFamily: "Urbanist, system-ui",
+        color: COLORS.grayDark,
+        marginLeft: 6,
+      }}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -62,6 +66,18 @@ function formatDateTR(dateStr) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = date.getFullYear();
   return `${day}/${month}/${year}`;
+}
+
+/**
+ * Initials normalization (TR-safe)
+ * - keeps only letters incl. Turkish
+ * - max 3 chars
+ * - uppercases in tr-TR locale so i->İ, ı->I correctly
+ */
+function normalizeInitialsTR(input) {
+  const raw = String(input ?? "");
+  const lettersOnly = raw.replace(/[^A-Za-zÇĞİÖŞÜçğıöşü]/g, "").slice(0, 3);
+  return lettersOnly.toLocaleUpperCase("tr-TR");
 }
 
 // --- Table styles (kept from your current file) ---
@@ -124,41 +140,29 @@ export default function AdminPanel() {
   const [allowRetroactiveLeave, setAllowRetroactiveLeave] = useState(false);
   const [refreshingUserId, setRefreshingUserId] = useState(null);
   const [recentlyRefreshedUserId, setRecentlyRefreshedUserId] = useState(null);
+  const [archivingUserId, setArchivingUserId] = useState(null);
+  const [archiveReason, setArchiveReason] = useState("");
+
 
   // Fetch all users, balances, holidays, etc.  (kept from your flow)
   useEffect(() => {
     async function fetchAll() {
-      const { data: usersData } = await supabase.from("users").select("id, name, email, role, manager_email, initials");
+      const { data: usersData } = await supabase.from("users").select("id, name, email, role, manager_email, initials").eq("is_active", true);
       setUsers(usersData || []);
 
-      const { data: typeData } = await supabase
-        .from("leave_types")
-        .select("*")
-        .eq("name", "Annual")
-        .maybeSingle();
-
+      const { data: typeData } = await supabase.from("leave_types").select("*").eq("name", "Annual").maybeSingle();
       setAnnualType(typeData);
 
       if (typeData) {
-        const { data: balData } = await supabase
-          .from("leave_balances")
-          .select("*")
-          .eq("leave_type_id", typeData.id);
+        const { data: balData } = await supabase.from("leave_balances").select("*").eq("leave_type_id", typeData.id);
         setBalances(balData || []);
       }
 
-      const { data: holData } = await supabase
-        .from("holidays")
-        .select("*")
-        .order("date");
+      const { data: holData } = await supabase.from("holidays").select("*").order("date");
       setHolidays(holData || []);
 
       // Settings (retroactive flag)
-      const { data: settings } = await supabase
-        .from("settings")
-        .select("allow_retroactive_leave")
-        .eq("id", 1)
-        .maybeSingle();
+      const { data: settings } = await supabase.from("settings").select("allow_retroactive_leave").eq("id", 1).maybeSingle();
       if (settings && typeof settings.allow_retroactive_leave === "boolean") {
         setAllowRetroactiveLeave(settings.allow_retroactive_leave);
       }
@@ -175,7 +179,7 @@ export default function AdminPanel() {
 
   function getBal(user_id) {
     if (!annualType) return {};
-    return balances.find(b => b.user_id === user_id && b.leave_type_id === annualType.id) || {};
+    return balances.find((b) => b.user_id === user_id && b.leave_type_id === annualType.id) || {};
   }
 
   function onSaveClick(user) {
@@ -198,7 +202,7 @@ export default function AdminPanel() {
     setMessage("");
     const bal = getBal(confirmingUser?.id);
     const key = (field) => `${confirmingUser.id}_${field}`;
-    const parseOrZero = val => isNaN(Number(val)) || val === "" ? 0 : Number(val);
+    const parseOrZero = (val) => (isNaN(Number(val)) || val === "" ? 0 : Number(val));
     const remaining = parseOrZero(editing[key("remaining")] ?? bal?.remaining ?? "");
 
     let token = "";
@@ -218,7 +222,7 @@ export default function AdminPanel() {
     try {
       const res = await fetch(EDGE_FUNCTION_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           user_id: confirmingUser.id,
           remaining,
@@ -234,7 +238,7 @@ export default function AdminPanel() {
       } else {
         setBalances((prev) => {
           let found = false;
-          const updated = prev.map(bal => {
+          const updated = prev.map((bal) => {
             if (bal.user_id === confirmingUser.id && bal.leave_type_id === annualType.id) {
               found = true;
               return { ...bal, remaining, last_updated: new Date().toISOString() };
@@ -276,7 +280,7 @@ export default function AdminPanel() {
     try {
       const res = await fetch(ASSIGN_MANAGER_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ user_id: userId, manager_email: newManagerEmail }),
       });
       const data = await res.json();
@@ -284,7 +288,7 @@ export default function AdminPanel() {
         setMessage(data.error || "Yönetici atama başarısız.");
         toast.error(data.error || "Yönetici atama başarısız.");
       } else {
-        setUsers(users => users.map(u => u.id === userId ? { ...u, manager_email: newManagerEmail } : u));
+        setUsers((users) => users.map((u) => (u.id === userId ? { ...u, manager_email: newManagerEmail } : u)));
         setMessage("Yönetici değiştirildi.");
         toast.success("Yönetici değiştirildi.");
       }
@@ -310,15 +314,10 @@ export default function AdminPanel() {
     }
 
     const name = editing[`${user.id}_name`] ?? user.name ?? "";
-    let initials = (editing[`${user.id}_initials`] ?? user.initials ?? "");
-    if (initials.length >= 2) {
-      initials = initials[0].toUpperCase() + initials[1].toUpperCase() + (initials[2] || "");
-    } else {
-      initials = initials.toUpperCase();
-    }
+    const initials = normalizeInitialsTR(editing[`${user.id}_initials`] ?? user.initials ?? "");
 
-    if (!/^[A-ZÇĞİÖŞÜ]{2}[a-zçğıöşüA-ZÇĞİÖŞÜ]?$/.test(initials)) {
-      setMessage("Baş harflerin ilk 2 karakteri büyük olmalı (maks 3 karakter, TR destekli).");
+    if (!/^[A-ZÇĞİÖŞÜ]{2}[A-ZÇĞİÖŞÜ]?$/.test(initials)) {
+      setMessage("Baş harfler 2 veya 3 karakter olmalı ve büyük harf olmalı (TR destekli).");
       toast.error("Baş harfler formatı hatalı.");
       setSavingUserId(null);
       return;
@@ -333,7 +332,7 @@ export default function AdminPanel() {
     try {
       const res = await fetch(`${BASE_FUNCTION_URL}/update-user-info`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ user_id: user.id, name, initials }),
       });
       const data = await res.json();
@@ -341,10 +340,10 @@ export default function AdminPanel() {
         setMessage(data.error || "Kaydetme işlemi başarısız oldu.");
         toast.error(data.error || "Kaydetme işlemi başarısız oldu.");
       } else {
-        setUsers(users => users.map(u => (u.id === user.id ? { ...u, name, initials } : u)));
+        setUsers((users) => users.map((u) => (u.id === user.id ? { ...u, name, initials } : u)));
         setMessage("Kullanıcı adı ve baş harfler güncellendi.");
         toast.success("Kullanıcı adı ve baş harfler güncellendi!");
-        setEditing(ed => {
+        setEditing((ed) => {
           const next = { ...ed };
           delete next[`${user.id}_name`];
           delete next[`${user.id}_initials`];
@@ -373,7 +372,7 @@ export default function AdminPanel() {
     try {
       const res = await fetch(ASSIGN_ROLE_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ user_id: userId, role: newRole }),
       });
       const data = await res.json();
@@ -381,7 +380,7 @@ export default function AdminPanel() {
         setMessage(data.error || "Rol atama başarısız.");
         toast.error(data.error || "Rol atama başarısız.");
       } else {
-        setUsers(users => users.map(u => (u.id === userId ? { ...u, role: newRole } : u)));
+        setUsers((users) => users.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
         setMessage("Rol güncellendi.");
         toast.success("Rol güncellendi.");
       }
@@ -390,6 +389,55 @@ export default function AdminPanel() {
       toast.error("Rol atama sırasında hata oluştu.");
     }
   }
+  async function archiveUser(user) {
+  const ok = window.confirm(
+    `${user.name || user.email} kullanıcısını arşivlemek istediğinize emin misiniz?\n\n` +
+      "Bu işlem kullanıcıyı pasifleştirir. Geçmiş izin kayıtları korunur."
+  );
+  if (!ok) return;
+
+  const reason = prompt("Arşiv sebebi (ör: İstifa / İşten ayrıldı / Sözleşme bitti):", "İşten ayrıldı");
+  if (reason === null) return; // user cancelled prompt
+
+  setArchivingUserId(user.id);
+  setMessage("");
+
+  const { error } = await supabase
+    .from("users")
+    .update({
+      is_active: false,
+      archived_at: new Date().toISOString(),
+      archived_reason: reason,
+    })
+    .eq("id", user.id);
+
+  if (error) {
+    setMessage("Arşivleme sırasında hata oluştu.");
+    toast.error(error.message || "Arşivleme sırasında hata oluştu.");
+    setArchivingUserId(null);
+    return;
+  }
+  await supabase.from("users_logs").insert([
+    {
+      target_user_id: user.id,
+      action: "ARCHIVE_USER",
+      old_manager_email: user.manager_email ?? null,
+      new_manager_email: user.manager_email ?? null,
+      old_role: user.role ?? null,
+      new_role: user.role ?? null,
+      performed_by: dbUser.id,
+      performed_by_email: dbUser.email,
+      note: reason,
+    },
+  ]);
+
+  // Remove from current view immediately (since we only show active users now)
+  setUsers((prev) => prev.filter((u) => u.id !== user.id));
+
+  toast.success("Kullanıcı arşivlendi.");
+  setMessage("Kullanıcı arşivlendi.");
+  setArchivingUserId(null);
+}
 
   async function handleRefreshUser(userId) {
     setRefreshingUserId(userId);
@@ -399,13 +447,14 @@ export default function AdminPanel() {
       .select("id, name, email, role, manager_email, initials")
       .eq("id", userId)
       .maybeSingle();
+
     if (error || !updatedUser) {
       setMessage("Kullanıcı bilgisi güncellenemedi.");
       toast.error("Kullanıcı bilgisi güncellenemedi.");
       setRefreshingUserId(null);
       return;
     }
-    setUsers(users => users.map(u => (u.id === userId ? { ...u, ...updatedUser } : u)));
+    setUsers((users) => users.map((u) => (u.id === userId ? { ...u, ...updatedUser } : u)));
     setMessage("Kullanıcı bilgisi yenilendi.");
     toast.success("Kullanıcı bilgisi yenilendi.");
     setRefreshingUserId(null);
@@ -436,7 +485,7 @@ export default function AdminPanel() {
     setDeletingHolidayId(h.id);
     const { error } = await supabase.from("holidays").delete().eq("id", h.id);
     if (!error) {
-      setHolidays(holidays.filter(hol => hol.id !== h.id));
+      setHolidays(holidays.filter((hol) => hol.id !== h.id));
       toast.success("Tatil silindi.");
     } else {
       toast.error("Tatil silinirken hata oluştu.");
@@ -445,10 +494,7 @@ export default function AdminPanel() {
   }
 
   async function handleToggleRetroactive() {
-    const { error } = await supabase
-      .from("settings")
-      .update({ allow_retroactive_leave: !allowRetroactiveLeave })
-      .eq("id", 1);
+    const { error } = await supabase.from("settings").update({ allow_retroactive_leave: !allowRetroactiveLeave }).eq("id", 1);
     if (!error) {
       setAllowRetroactiveLeave(!allowRetroactiveLeave);
       toast.success(`Retroaktif izin ${!allowRetroactiveLeave ? "açıldı" : "kapatıldı"}.`);
@@ -481,10 +527,12 @@ export default function AdminPanel() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <h1 style={{ margin: 0, fontSize: 22, color: COLORS.grayDark, fontWeight: 800 }}>Yönetici Paneli</h1>
         {message && (
-          <div style={{
-            color: message.includes("hata") || message.includes("başarısız") ? COLORS.red : "#1C6234",
-            fontWeight: 700
-          }}>
+          <div
+            style={{
+              color: message.includes("hata") || message.includes("başarısız") ? COLORS.red : "#1C6234",
+              fontWeight: 700,
+            }}
+          >
             {message}
           </div>
         )}
@@ -504,7 +552,7 @@ export default function AdminPanel() {
           marginBottom: 14,
         }}
       >
-        {TABS.map(t => {
+        {TABS.map((t) => {
           const activeTab = active === t.key;
           return (
             <button
@@ -533,7 +581,15 @@ export default function AdminPanel() {
       {active === "users" && (
         <Section title="Kullanıcılar & Bakiyeler">
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", fontSize: 16, borderSpacing: 0, minWidth: 820 }}>
+            <table
+  style={{
+    width: "100%",
+    fontSize: 16,
+    borderSpacing: 0,
+    minWidth: 820,
+  }}
+>
+
               <thead>
                 <tr style={{ background: COLORS.veryLightBlue, color: COLORS.grayDark }}>
                   <th></th>
@@ -541,15 +597,19 @@ export default function AdminPanel() {
                   <th style={th}>@terralab.com.tr</th>
                   <th style={th}>Rol</th>
                   <th style={th}>Yön.</th>
-                  <th style={{ ...th, borderLeft: `2px solid ${COLORS.veryLightBlue}` }}>Kalan</th>
-                  <th style={th}>İşlem</th>
+                  <th style={{ ...th, borderLeft: `2px solid ${COLORS.veryLightBlue}`, width: 78 }}>Kalan</th>
+<th style={{ ...th, width: 70 }}>İşlem</th>
+
                 </tr>
               </thead>
               <tbody>
-                {[...users].sort((a, b) => a.email.localeCompare(b.email)).map(user => {
+                {[...users].sort((a, b) => a.email.localeCompare(b.email)).map((user) => {
                   const key = (field) => `${user.id}_${field}`;
                   const name = editing[key("name")] ?? user.name ?? "";
-                  const initials = editing[key("initials")] ?? user.initials ?? "";
+
+                  // ✅ IMPORTANT: always normalize what you DISPLAY, so "İLK." shows as "İLK"
+                  const initials = normalizeInitialsTR(editing[key("initials")] ?? user.initials ?? "");
+
                   const remaining = editing[key("remaining")] ?? getBal(user.id).remaining ?? "";
                   const username = user.email.replace("@terralab.com.tr", "");
                   const highlight = recentlyRefreshedUserId === user.id;
@@ -560,7 +620,7 @@ export default function AdminPanel() {
                       style={{
                         transition: "background 0.5s, opacity 0.5s",
                         background: highlight ? "#e9faf5" : undefined,
-                        opacity: refreshingUserId === user.id ? 0.5 : 1
+                        opacity: refreshingUserId === user.id ? 0.5 : 1,
                       }}
                     >
                       {/* refresh */}
@@ -575,7 +635,7 @@ export default function AdminPanel() {
                             fontSize: 15,
                             color: COLORS.gray,
                             padding: 0,
-                            cursor: refreshingUserId === user.id ? "not-allowed" : "pointer"
+                            cursor: refreshingUserId === user.id ? "not-allowed" : "pointer",
                           }}
                           title="Satırı yenile"
                           onClick={() => handleRefreshUser(user.id)}
@@ -590,22 +650,20 @@ export default function AdminPanel() {
                         <input
                           type="text"
                           value={name}
-                          onChange={e => onEdit(user.id, "name", e.target.value)}
+                          onChange={(e) => onEdit(user.id, "name", e.target.value)}
                           style={{ ...inputStyle, width: 130, fontWeight: 600, fontSize: 15, marginRight: 2 }}
                           maxLength={60}
                           placeholder="Ad Soyad"
                           autoComplete="off"
                         />
+
+                        {/* ✅ INITIALS: click-to-replace + TR-safe normalize */}
                         <input
                           type="text"
                           value={initials}
-                          onChange={e => {
-                            let val = e.target.value.replace(/[^A-Za-zÇĞİÖŞÜçğıöşü]/g, "").slice(0, 3);
-                            if (val.length >= 2) {
-                              val = val[0].toUpperCase() + val[1].toUpperCase() + (val[2] || "");
-                            } else {
-                              val = val.toUpperCase();
-                            }
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const val = normalizeInitialsTR(e.target.value);
                             onEdit(user.id, "initials", val);
                           }}
                           style={{
@@ -615,121 +673,138 @@ export default function AdminPanel() {
                             fontWeight: 700,
                             fontSize: 14,
                             background: "#FFF2DC",
-                            color: COLORS.orange
+                            color: COLORS.orange,
                           }}
                           maxLength={3}
                           minLength={2}
                           placeholder="İLK."
+                          title="2–3 harf (TR), büyük harf"
                           autoComplete="off"
                         />
                       </td>
 
                       {/* username */}
-                      <td style={{ ...td, fontSize: 14, maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {username}
-                      </td>
+                      <td style={{ ...td, fontSize: 14, maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis" }}>{username}</td>
 
                       {/* role */}
                       <td style={td}>
                         {user.role === "admin" ? (
                           <Pill tone="ok">Admin</Pill>
                         ) : (
-                          <select value={user.role} onChange={e => handleRoleChange(user.id, e.target.value)} style={{ ...inputStyle, width: 112 }}>
+                          <select value={user.role} onChange={(e) => handleRoleChange(user.id, e.target.value)} style={{ ...inputStyle, width: 112 }}>
                             <option value="user">Kullanıcı</option>
                             <option value="manager">Yönetici</option>
                           </select>
                         )}
                       </td>
 
-                      {/* manager + blue check (fixed positioning) */}
-                      <td style={{ ...td, position: "relative", minWidth: 180, textAlign: "left", paddingRight: 42 }}>
-                        <div style={{ display: "flex", alignItems: "center" }}>
-                          {user.role === "admin" ? (
-                            users.find(u => u.email === user.manager_email)?.name || user.manager_email || "-"
-                          ) : (
-                            <select
-                              value={user.manager_email || ""}
-                              onChange={e => handleManagerChange(user.id, e.target.value)}
-                              style={{ ...inputStyle, width: 180, marginRight: 8 }}
-                            >
-                              <option value="">Yok</option>
-                              {[...users]
-                                .filter(u => u.email !== user.email)
-                                .sort((a, b) => a.email.localeCompare(b.email))
-                                .map(mgr => (
-                                  <option key={mgr.email} value={mgr.email}>
-                                    {mgr.name || mgr.email}
-                                  </option>
-                                ))}
-                            </select>
-                          )}
-                          <div style={{ flex: 1 }} />
-                        </div>
-                        <button
-                          onClick={() => onSaveUserInfo(user)}
-                          title="Yönetici kaydet"
-                          style={{
-                            position: "absolute",
-                            right: 6,
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            background: COLORS.blue,
-                            border: "none",
-                            borderRadius: 7,
-                            width: 30,
-                            height: 30,
-                            color: "#fff",
-                            fontWeight: 900,
-                            fontSize: 19,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            boxShadow: "0 1px 3px #cde5f470",
-                            cursor: "pointer",
-                            transition: "background 0.18s",
-                            outline: "none",
-                            zIndex: 2
-                          }}
-                          tabIndex={0}
-                          onKeyDown={e => { if (e.key === "Enter" || e.key === " ") onSaveUserInfo(user); }}
-                        >
-                          ✔
-                        </button>
-                      </td>
+                      {/* manager + blue check */}
+                      <td style={{ ...td, minWidth: 220, textAlign: "left" }}>
+  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    {user.role === "admin" ? (
+      <div style={{ flex: 1, color: COLORS.grayDark }}>
+        {users.find((u) => u.email === user.manager_email)?.name || user.manager_email || "-"}
+      </div>
+    ) : (
+      <select
+        value={user.manager_email || ""}
+        onChange={(e) => handleManagerChange(user.id, e.target.value)}
+        style={{ ...inputStyle, width: 180 }}
+      >
+        <option value="">Yok</option>
+        {[...users]
+          .filter((u) => u.email !== user.email)
+          .sort((a, b) => a.email.localeCompare(b.email))
+          .map((mgr) => (
+            <option key={mgr.email} value={mgr.email}>
+              {mgr.name || mgr.email}
+            </option>
+          ))}
+      </select>
+    )}
+
+    <button
+      onClick={() => onSaveUserInfo(user)}
+      disabled={savingUserId === user.id}
+      title="Kullanıcı bilgilerini kaydet"
+      style={{
+        background: COLORS.blue,
+        border: "none",
+        borderRadius: 7,
+        width: 34,
+        height: 30,
+        color: "#fff",
+        fontWeight: 900,
+        fontSize: 19,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 1px 3px #cde5f470",
+        cursor: savingUserId === user.id ? "not-allowed" : "pointer",
+        opacity: savingUserId === user.id ? 0.6 : 1,
+        flexShrink: 0,
+      }}
+    >
+      ✔
+    </button>
+  </div>
+</td>
+
 
                       {/* remaining */}
-                      <td style={{ ...td, borderLeft: `2px solid ${COLORS.veryLightBlue}`, background: "#f8fbfd", width: 62 }}>
-                        <input
-                          type="number"
-                          value={remaining}
-                          onChange={e => onEdit(user.id, "remaining", e.target.value)}
-                          style={{ ...inputStyle, width: 60, fontSize: 15 }}
-                          min={0}
-                        />
-                      </td>
+                      <td style={{ ...td, borderLeft: `2px solid ${COLORS.veryLightBlue}`, background: "#f8fbfd", width: 78 }}>
+  <input
+    type="number"
+    value={remaining}
+    onChange={(e) => onEdit(user.id, "remaining", e.target.value)}
+    style={{ ...inputStyle, width: 60, fontSize: 15 }}
+    min={0}
+  />
+</td>
+<td style={{ ...td, background: "#f8fbfd", width: 64 }}>
+  <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
+    <button
+      style={{
+        background: COLORS.orange,
+        color: "#fff",
+        border: "none",
+        borderRadius: 7,
+        width: 34,
+        height: 30,
+        fontSize: 17,
+        padding: 0,
+        cursor: savingUserId === user.id ? "not-allowed" : "pointer",
+      }}
+      disabled={savingUserId === user.id}
+      onClick={() => onSaveClick(user)}
+      title="Bakiyeyi Kaydet (E-posta gönderir)"
+    >
+      💾
+    </button>
 
-                      {/* save */}
-                      <td style={{ ...td, background: "#f8fbfd", width: 46 }}>
-                        <button
-                          style={{
-                            background: COLORS.orange,
-                            color: "#fff",
-                            border: "none",
-                            borderRadius: 7,
-                            width: 34,
-                            height: 30,
-                            fontSize: 17,
-                            marginRight: 2,
-                            padding: 0,
-                            cursor: savingUserId === user.id ? "not-allowed" : "pointer"
-                          }}
-                          disabled={savingUserId === user.id}
-                          onClick={() => onSaveClick(user)}
-                          title="Bakiyeyi Kaydet (E-posta gönderir)"
-                        >
-                          💾
-                        </button>
-                      </td>
+    <button
+      onClick={() => archiveUser(user)}
+      disabled={archivingUserId === user.id}
+      title="Kullanıcıyı arşivle (pasifleştir)"
+      style={{
+        background: COLORS.gray,
+        color: "#fff",
+        border: "none",
+        borderRadius: 7,
+        width: 34,
+        height: 30,
+        fontSize: 16,
+        padding: 0,
+        cursor: archivingUserId === user.id ? "not-allowed" : "pointer",
+        opacity: archivingUserId === user.id ? 0.6 : 1,
+      }}
+    >
+      🗃
+    </button>
+  </div>
+</td>
+
+
                     </tr>
                   );
                 })}
@@ -741,9 +816,16 @@ export default function AdminPanel() {
           {confirmingUser && (
             <div
               style={{
-                position: "fixed", left: 0, top: 0, width: "100vw", height: "100vh",
-                background: "rgba(33,47,62,0.22)", zIndex: 999,
-                display: "flex", alignItems: "center", justifyContent: "center"
+                position: "fixed",
+                left: 0,
+                top: 0,
+                width: "100vw",
+                height: "100vh",
+                background: "rgba(33,47,62,0.22)",
+                zIndex: 999,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
               <div
@@ -753,7 +835,7 @@ export default function AdminPanel() {
                   padding: "32px 28px",
                   boxShadow: "0 4px 28px #a8d2f285",
                   minWidth: 360,
-                  border: `1px solid ${COLORS.veryLightBlue}`
+                  border: `1px solid ${COLORS.veryLightBlue}`,
                 }}
               >
                 <h3 style={{ color: COLORS.orange, marginBottom: 8, fontWeight: 700, fontSize: 22 }}>Kaydı Onayla</h3>
@@ -761,16 +843,16 @@ export default function AdminPanel() {
                   <div>
                     <b>{confirmingUser.name || confirmingUser.email}</b> kullanıcısının bakiyesi güncellenecek.
                   </div>
-                  <div style={{ fontSize: 15, margin: "10px 0 2px 0" }}>
-                    Bu işlem çalışana ve yöneticisine e-posta bildirimi gönderir.
-                  </div>
+                  <div style={{ fontSize: 15, margin: "10px 0 2px 0" }}>Bu işlem çalışana ve yöneticisine e-posta bildirimi gönderir.</div>
                 </div>
                 <div style={{ marginBottom: 18 }}>
-                  <label htmlFor="admin-note" style={{ fontSize: 15, fontWeight: 500 }}>Açıklama (e-postada gösterilecek):</label>
+                  <label htmlFor="admin-note" style={{ fontSize: 15, fontWeight: 500 }}>
+                    Açıklama (e-postada gösterilecek):
+                  </label>
                   <textarea
                     id="admin-note"
                     value={adminNote}
-                    onChange={e => setAdminNote(e.target.value)}
+                    onChange={(e) => setAdminNote(e.target.value)}
                     placeholder="İsteğe bağlı açıklama girin"
                     style={{
                       width: "100%",
@@ -794,10 +876,12 @@ export default function AdminPanel() {
                       borderRadius: 7,
                       padding: "7px 22px",
                       fontSize: 17,
-                      cursor: "pointer"
+                      cursor: "pointer",
                     }}
                     onClick={onCancelConfirm}
-                  >İptal</button>
+                  >
+                    İptal
+                  </button>
                   <button
                     style={{
                       background: COLORS.orange,
@@ -807,10 +891,12 @@ export default function AdminPanel() {
                       borderRadius: 7,
                       padding: "7px 22px",
                       fontSize: 17,
-                      cursor: "pointer"
+                      cursor: "pointer",
                     }}
                     onClick={onConfirmSave}
-                  >Onayla ve Kaydet</button>
+                  >
+                    Onayla ve Kaydet
+                  </button>
                 </div>
               </div>
             </div>
@@ -827,17 +913,22 @@ export default function AdminPanel() {
               <div
                 onClick={handleToggleRetroactive}
                 style={{
-                  width: 48, height: 26, borderRadius: 18,
+                  width: 48,
+                  height: 26,
+                  borderRadius: 18,
                   background: allowRetroactiveLeave ? COLORS.red : COLORS.blue,
-                  position: "relative", cursor: "pointer",
+                  position: "relative",
+                  cursor: "pointer",
                   transition: "background 0.25s",
                   boxShadow: allowRetroactiveLeave ? "0 0 6px #E0653A44" : "0 0 6px #A8D2F2",
-                  border: allowRetroactiveLeave ? `1.5px solid ${COLORS.red}` : `1.5px solid ${COLORS.blue}`
+                  border: allowRetroactiveLeave ? `1.5px solid ${COLORS.red}` : `1.5px solid ${COLORS.blue}`,
                 }}
                 tabIndex={0}
                 role="button"
                 aria-pressed={allowRetroactiveLeave}
-                onKeyDown={e => { if (e.key === " " || e.key === "Enter") handleToggleRetroactive(); }}
+                onKeyDown={(e) => {
+                  if (e.key === " " || e.key === "Enter") handleToggleRetroactive();
+                }}
                 title={allowRetroactiveLeave ? "Açık" : "Kapalı"}
               >
                 <span
@@ -845,17 +936,16 @@ export default function AdminPanel() {
                     position: "absolute",
                     left: allowRetroactiveLeave ? 24 : 2,
                     top: 2,
-                    width: 22, height: 22,
+                    width: 22,
+                    height: 22,
                     borderRadius: "50%",
                     background: "#fff",
                     boxShadow: "0 1px 4px #8883",
-                    transition: "left 0.25s"
+                    transition: "left 0.25s",
                   }}
                 />
               </div>
-              <span style={{ fontWeight: 700, color: allowRetroactiveLeave ? COLORS.red : COLORS.blue, minWidth: 68 }}>
-                {allowRetroactiveLeave ? "Açık" : "Kapalı"}
-              </span>
+              <span style={{ fontWeight: 700, color: allowRetroactiveLeave ? COLORS.red : COLORS.blue, minWidth: 68 }}>{allowRetroactiveLeave ? "Açık" : "Kapalı"}</span>
             </label>
           </div>
         </Section>
@@ -863,16 +953,13 @@ export default function AdminPanel() {
 
       {/* HOLIDAYS TAB */}
       {active === "holidays" && (
-        <Section
-          title="Resmi Tatil Yönetimi"
-          right={null}
-        >
+        <Section title="Resmi Tatil Yönetimi" right={null}>
           <form onSubmit={handleAddHoliday} style={{ marginBottom: 18, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <input
               type="date"
               required
               value={newHolidayDate}
-              onChange={e => setNewHolidayDate(e.target.value)}
+              onChange={(e) => setNewHolidayDate(e.target.value)}
               style={{ fontSize: 15, padding: 5, borderRadius: 6, border: `1px solid ${COLORS.veryLightBlue}` }}
             />
             <input
@@ -880,23 +967,32 @@ export default function AdminPanel() {
               required
               placeholder="Tatil Adı"
               value={newHolidayName}
-              onChange={e => setNewHolidayName(e.target.value)}
+              onChange={(e) => setNewHolidayName(e.target.value)}
               style={{ fontSize: 15, padding: 5, borderRadius: 6, border: `1px solid ${COLORS.veryLightBlue}`, minWidth: 200 }}
             />
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15 }}>
-              <input type="checkbox" checked={isHalfDay} onChange={e => setIsHalfDay(e.target.checked)} />
+              <input type="checkbox" checked={isHalfDay} onChange={(e) => setIsHalfDay(e.target.checked)} />
               Yarım Gün
             </label>
             {isHalfDay && (
-              <select value={half} onChange={e => setHalf(e.target.value)} style={{ fontSize: 15, borderRadius: 6, border: `1px solid ${COLORS.veryLightBlue}` }}>
+              <select value={half} onChange={(e) => setHalf(e.target.value)} style={{ fontSize: 15, borderRadius: 6, border: `1px solid ${COLORS.veryLightBlue}` }}>
                 <option value="morning">Sabah</option>
                 <option value="afternoon">Öğleden Sonra</option>
               </select>
             )}
-            <button type="submit" disabled={addingHoliday} style={{
-              background: COLORS.orange, color: "#fff", border: "none", borderRadius: 8,
-              padding: "6px 18px", fontWeight: 700, cursor: addingHoliday ? "not-allowed" : "pointer"
-            }}>
+            <button
+              type="submit"
+              disabled={addingHoliday}
+              style={{
+                background: COLORS.orange,
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                padding: "6px 18px",
+                fontWeight: 700,
+                cursor: addingHoliday ? "not-allowed" : "pointer",
+              }}
+            >
               {addingHoliday ? "Ekleniyor…" : "Ekle"}
             </button>
           </form>
@@ -916,9 +1012,7 @@ export default function AdminPanel() {
                   <tr key={h.id || i}>
                     <td style={{ textAlign: "center", padding: 8 }}>{formatDateTR(h.date)}</td>
                     <td style={{ padding: 8 }}>{h.name}</td>
-                    <td style={{ padding: 8 }}>
-                      {h.is_half_day ? (h.half === "morning" ? "Sabah" : "Öğleden Sonra") : "Tam"}
-                    </td>
+                    <td style={{ padding: 8 }}>{h.is_half_day ? (h.half === "morning" ? "Sabah" : "Öğleden Sonra") : "Tam"}</td>
                     <td style={{ textAlign: "center" }}>
                       <button
                         onClick={() => onDeleteHoliday(h)}
@@ -946,15 +1040,11 @@ export default function AdminPanel() {
 
       {/* BACKUPS TAB */}
       {active === "backups" && (
-        <Section
-          title="Leave Balance Backups"
-          right={<Pill tone="info">Aylık snapshot + dışa aktarım</Pill>}
-        >
+        <Section title="Leave Balance Backups" right={<Pill tone="info">Aylık snapshot + dışa aktarım</Pill>}>
           <AdminBackups />
         </Section>
       )}
 
-      {/* Minor CSS for spinner (kept) */}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );

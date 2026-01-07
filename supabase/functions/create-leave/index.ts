@@ -8,12 +8,45 @@ const allowedOrigins = [
   "https://leave-app-v2.vercel.app",
   "http://localhost:5173",
 ];
+
 function getCORSHeaders(origin: string) {
   return {
     "Access-Control-Allow-Origin": allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
   };
+}
+
+function jsonResponse(
+  body: unknown,
+  status: number,
+  corsHeaders: Record<string, string>,
+) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders },
+  });
+}
+
+// Guard: block archived users at the server level
+async function assertUserIsActive(
+  supabase: any,
+  userId: string,
+  corsHeaders: Record<string, string>,
+) {
+  const { data, error } = await supabase
+    .from("users")
+    .select("is_active")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) return jsonResponse({ error: "User lookup failed" }, 500, corsHeaders);
+
+  if (!data || data.is_active === false) {
+    return jsonResponse({ error: "User is archived" }, 403, corsHeaders);
+  }
+
+  return null; // OK
 }
 
 serve(async (req) => {
@@ -29,21 +62,29 @@ serve(async (req) => {
 
     // Get JWT from header
     const authHeader = req.headers.get("authorization") || "";
-    const jwt = authHeader.replace("Bearer ", "");
+    const jwt = authHeader.replace("Bearer ", "").trim();
 
+    if (!jwt) {
+      return jsonResponse({ error: "Missing Authorization token" }, 401, corsHeaders);
+    }
+
+    // Service role client (your current pattern)
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      // Optional but helpful: attach auth header globally
+      { global: { headers: { Authorization: `Bearer ${jwt}` } } },
     );
 
-    // Get current user
+    // Get current user from JWT
     const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
     if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Kullanıcı doğrulanamadı" }), {
-        status: 401,
-        headers: corsHeaders,
-      });
+      return jsonResponse({ error: "Kullanıcı doğrulanamadı" }, 401, corsHeaders);
     }
+
+    // ✅ Actor guard
+    const blocked = await assertUserIsActive(supabase, user.id, corsHeaders);
+    if (blocked) return blocked;
 
     // Fetch manager (for e-mail)
     const { data: manager } = await supabase
@@ -52,10 +93,10 @@ serve(async (req) => {
       .eq("email", body.manager_email)
       .maybeSingle();
 
-    // --- NEW: normalize enable_ooo to a strict boolean
+    // Normalize enable_ooo to strict boolean
     const enableOOO: boolean = !!body.enable_ooo;
 
-    // Set up leave data (write enable_ooo)
+    // Set up leave data
     const leaveData = {
       user_id: user.id,
       email: user.email,
@@ -70,7 +111,7 @@ serve(async (req) => {
       status: "Pending",
       request_date: new Date().toISOString(),
       duration_type: body.duration_type,
-      enable_ooo: enableOOO, // <-- persist the opt-in flag
+      enable_ooo: enableOOO,
       ooo_custom_message: body.ooo_custom_message || null,
     };
 
@@ -82,12 +123,10 @@ serve(async (req) => {
       .maybeSingle();
 
     if (insertError) {
-      return new Response(JSON.stringify({ error: "İzin talebi oluşturulamadı" }), {
-        status: 500, headers: corsHeaders
-      });
+      return jsonResponse({ error: "İzin talebi oluşturulamadı" }, 500, corsHeaders);
     }
 
-    // Audit trail (include enable_ooo in details for visibility)
+    // Audit trail (include enable_ooo in details)
     if (inserted) {
       await supabase.from("logs").insert([{
         user_id: user.id,
@@ -105,7 +144,7 @@ serve(async (req) => {
           note: body.note,
           leave_type_id: body.leave_type_id,
           enable_ooo: enableOOO,
-        }
+        },
       }]);
     }
 
@@ -142,19 +181,16 @@ serve(async (req) => {
              ">
              İzin Uygulamasına Git
           </a>
-        `
+        `,
       });
     }
 
-    return new Response(JSON.stringify({ success: true, data: inserted }), {
-      status: 200,
-      headers: corsHeaders,
-    });
-
+    return jsonResponse({ success: true, data: inserted }, 200, corsHeaders);
   } catch (e: any) {
-    return new Response(JSON.stringify({ error: "Beklenmeyen hata: " + (e?.message || e) }), {
-      status: 500,
-      headers: corsHeaders,
-    });
+    return jsonResponse(
+      { error: "Beklenmeyen hata: " + (e?.message || e) },
+      500,
+      corsHeaders,
+    );
   }
 });

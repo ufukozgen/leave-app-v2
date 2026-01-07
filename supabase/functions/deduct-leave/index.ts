@@ -1,26 +1,60 @@
-// supabase/functions/deduct-leave/index.ts
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.0.0";
-import { sendGraphEmail } from "../helpers/sendGraphEmail.ts"; // Adjust the path if needed
+import { sendGraphEmail } from "../helpers/sendGraphEmail.ts";
+import { calcLeaveDays } from "../helpers/calcLeaveDays.ts";
 
 // CORS headers for browser support
 const allowedOrigins = [
   "https://leave-app-v2.vercel.app",
   "http://localhost:5173",
 ];
-function getCORSHeaders(origin) {
+
+function getCORSHeaders(origin: string) {
   return {
-    "Access-Control-Allow-Origin": allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Origin": allowedOrigins.includes(origin)
+      ? origin
+      : allowedOrigins[0],
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
   };
 }
+function jsonResponse(
+  body: unknown,
+  status: number,
+  corsHeaders: Record<string, string>,
+) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders },
+  });
+}
 
+async function assertUserIsActive(
+  supabase: any,
+  userId: string,
+  corsHeaders: Record<string, string>,
+  message = "User is archived",
+) {
+  const { data, error } = await supabase
+    .from("users")
+    .select("is_active")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) return jsonResponse({ error: "User lookup failed" }, 500, corsHeaders);
+
+  if (!data || data.is_active === false) {
+    return jsonResponse({ error: message }, 403, corsHeaders);
+  }
+
+  return null;
+}
 
 serve(async (req) => {
-      const origin = req.headers.get("origin") || "";
+  const origin = req.headers.get("origin") || "";
   const corsHeaders = getCORSHeaders(origin);
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -36,17 +70,29 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(jwt);
+
     if (userError || !user) {
       return new Response(JSON.stringify({ error: "Kullanıcı doğrulanamadı" }), {
         status: 401,
         headers: corsHeaders,
       });
     }
+// ✅ Actor guard: caller must be active
+{
+  const blocked = await assertUserIsActive(supabase, user.id, corsHeaders);
+  if (blocked) return blocked;
+}
 
+    // Fetch leave request (include location/note because you log them)
     const { data: leave, error: leaveError } = await supabase
       .from("leave_requests")
-      .select("id, user_id, leave_type_id, days, status, manager_email, start_date, end_date")
+      .select(
+        "id, user_id, leave_type_id, days, deducted_days, status, manager_email, start_date, end_date, location, note"
+      )
       .eq("id", request_id)
       .maybeSingle();
 
@@ -56,7 +102,20 @@ serve(async (req) => {
         headers: corsHeaders,
       });
     }
+// ✅ Target guard: request owner must be active (recommended)
+{
+  const blockedTarget = await assertUserIsActive(
+    supabase,
+    leave.user_id,
+    corsHeaders,
+    "Target user is archived",
+  );
+  if (blockedTarget) {
+    return jsonResponse({ error: "Target user is archived" }, 409, corsHeaders);
+  }
+}
 
+    // Actor role check
     const { data: userRow } = await supabase
       .from("users")
       .select("role, email")
@@ -72,6 +131,7 @@ serve(async (req) => {
 
     const isManager = userRow.email === leave.manager_email;
     const isAdmin = userRow.role === "admin";
+
     if (!isManager && !isAdmin) {
       return new Response(JSON.stringify({ error: "Yetkiniz yok." }), {
         status: 403,
@@ -81,16 +141,45 @@ serve(async (req) => {
 
     // Only allow deduction from Approved
     if (leave.status !== "Approved") {
-      return new Response(JSON.stringify({ error: "Sadece onaylanan izinler düşülebilir." }), {
-        status: 400,
+      return new Response(
+        JSON.stringify({ error: "Sadece onaylanan izinler düşülebilir." }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    // Fetch holidays within leave range (inclusive)
+    const { data: holidayRows, error: holidayError } = await supabase
+      .from("holidays")
+      .select("date, is_half_day, half")
+      .gte("date", leave.start_date)
+      .lte("date", leave.end_date);
+
+    if (holidayError) {
+      return new Response(JSON.stringify({ error: "Resmi tatiller alınamadı" }), {
+        status: 500,
         headers: corsHeaders,
       });
     }
 
-    // Update leave request to Deducted
+    // Recalculate deduction days at deduction-time
+    const computedDaysToDeduct = calcLeaveDays({
+      startDate: leave.start_date,
+      endDate: leave.end_date,
+      holidays: (holidayRows || []).map((h) => ({
+        date: h.date,
+        is_half_day: h.is_half_day,
+        half: h.half,
+      })),
+    });
+
+    // Update leave request to Deducted + store deducted_days
     const { error: updateLeaveError } = await supabase
       .from("leave_requests")
-      .update({ status: "Deducted", deduction_date: new Date().toISOString() })
+      .update({
+        status: "Deducted",
+        deduction_date: new Date().toISOString(),
+        deducted_days: computedDaysToDeduct,
+      })
       .eq("id", leave.id);
 
     if (updateLeaveError) {
@@ -110,52 +199,58 @@ serve(async (req) => {
 
     if (balanceError || !balance) {
       return new Response(JSON.stringify({ error: "İzin bakiyesi bulunamadı" }), {
-        status: 404, headers: corsHeaders
+        status: 404,
+        headers: corsHeaders,
       });
     }
 
-        const daysToDeduct = Number(leave.days);
+    const daysToDeduct = Number(computedDaysToDeduct);
     const newUsed = Number(balance.used) + daysToDeduct;
     const newRemaining = Number(balance.remaining) - daysToDeduct;
     // ---- Allow negative balances (advance leave) ----
 
     const { error: updateBalanceError } = await supabase
       .from("leave_balances")
-      .update({ used: newUsed, remaining: newRemaining, last_updated: new Date().toISOString() })
+      .update({
+        used: newUsed,
+        remaining: newRemaining,
+        last_updated: new Date().toISOString(),
+      })
       .eq("id", balance.id);
 
     if (updateBalanceError) {
       return new Response(JSON.stringify({ error: "Bakiyeler güncellenemedi" }), {
-        status: 500, headers: corsHeaders
+        status: 500,
+        headers: corsHeaders,
       });
     }
 
+    // Log (best-effort)
     try {
-  await supabase.from("logs").insert([
-    {
-      user_id: user.id,              // the actor's user ID from JWT
-      actor_email: user.email,       // actor's email
-      action: "deduct_request",         // e.g. "approve_request"
-      target_table: "leave_requests",
-      target_id: leave.id,
-      status_before: leave.status,
-      status_after: "Deducted",      // new leave status string
-      details: {
-        start_date: leave.start_date,
-        end_date: leave.end_date,
-        days: leave.days,
-        location: leave.location,
-        note: leave.note,
-        
-        // add any other useful info
-      }
+      await supabase.from("logs").insert([
+        {
+          user_id: user.id,
+          actor_email: user.email,
+          action: "deduct_request",
+          target_table: "leave_requests",
+          target_id: leave.id,
+          status_before: leave.status,
+          status_after: "Deducted",
+          details: {
+            start_date: leave.start_date,
+            end_date: leave.end_date,
+            // Store both values: what was on the request, and what was actually deducted now
+            requested_days: leave.days,
+            deducted_days: daysToDeduct,
+            location: leave.location,
+            note: leave.note,
+            holidays_in_range: (holidayRows || []).length,
+          },
+        },
+      ]);
+    } catch (logError) {
+      console.error("Failed to log action:", logError);
     }
-  ]);
-
-  } catch (logError) {
-  console.error("Failed to log action:", logError);
-  // Optional: handle logging failure gracefully without blocking main flow
-}
 
     // Fetch employee (for e-mail)
     const { data: employee } = await supabase
@@ -171,53 +266,53 @@ serve(async (req) => {
         subject: "İzin Günlerinizden Düşüş Yapıldı",
         html: `
           <p>Sayın ${employee.name},</p>
-          <p>Aşağıdaki izin talebiniz için <b>${leave.days}</b> gün düşülmüştür.</p>
+          <p>Aşağıdaki izin talebiniz için <b>${daysToDeduct}</b> gün düşülmüştür.</p>
           <ul>
             <li>Başlangıç: ${leave.start_date}</li>
             <li>Bitiş: ${leave.end_date}</li>
-            <li>Düşülen Gün: <b>${leave.days}</b></li>
+            <li>Düşülen Gün: <b>${daysToDeduct}</b></li>
             <li>Kalan Yıllık İzin: <b>${newRemaining}</b> gün</li>
           </ul>
           <p>Bakiye bilgilerinizi uygulamada detaylı görebilirsiniz.</p>
 
-                <br/>
-      <a href="https://leave-app-v2.vercel.app" 
-         style="
-           display:inline-block;
-           padding:10px 20px;
-           background:#F39200;
-           color:#fff;
-           border-radius:8px;
-           text-decoration:none;
-           font-weight:bold;
-           font-family:Calibri, Arial, sans-serif;
-           font-size:16px;
-           margin-top:10px;
-         ">
-         İzin Uygulamasına Git
-      </a>
-        `
-        // from: "izin-uygulamasi@terralab.com.tr" // only if not set in sendGraphEmail
+          <br/>
+          <a href="https://leave-app-v2.vercel.app"
+             style="
+               display:inline-block;
+               padding:10px 20px;
+               background:#F39200;
+               color:#fff;
+               border-radius:8px;
+               text-decoration:none;
+               font-weight:bold;
+               font-family:Calibri, Arial, sans-serif;
+               font-size:16px;
+               margin-top:10px;
+             ">
+             İzin Uygulamasına Git
+          </a>
+        `,
       });
     }
 
-    
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        warning: newRemaining < 0 ? "Bu işlem sonucu çalışan bakiyesi negatife düştü!" : undefined
+      JSON.stringify({
+        success: true,
+        warning:
+          newRemaining < 0
+            ? "Bu işlem sonucu çalışan bakiyesi negatife düştü!"
+            : undefined,
+        deducted_days: daysToDeduct,
       }),
       {
         status: 200,
         headers: corsHeaders,
       }
     );
-    
   } catch (e) {
-    return new Response(JSON.stringify({ error: "Beklenmeyen hata: " + (e?.message || e) }), {
-      status: 500,
-      headers: corsHeaders,
-    });
+    return new Response(
+      JSON.stringify({ error: "Beklenmeyen hata: " + (e?.message || e) }),
+      { status: 500, headers: corsHeaders }
+    );
   }
 });
-

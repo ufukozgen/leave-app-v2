@@ -28,7 +28,11 @@ export default function EmployeeLeaveConsole({ managerEmail, email, role }) {
   // Fetch subordinates of this manager
 useEffect(() => {
   async function fetchUsers() {
-    let query = supabase.from("users").select("id, email, manager_email");
+    let query = supabase
+  .from("users")
+  .select("id, email, manager_email")
+  .eq("is_active", true);
+
 
     if (role !== "admin") {
       query = query.eq("manager_email", email); // your last fix

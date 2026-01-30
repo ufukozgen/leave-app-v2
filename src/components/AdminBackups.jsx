@@ -1,6 +1,7 @@
 // src/components/AdminBackups.jsx
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { toast } from "react-hot-toast";
 
 // --- Brand colors ---
 const COLORS = {
@@ -13,6 +14,10 @@ const COLORS = {
   gray: "#818285",
   yellow: "#F0B357",
 };
+
+const BASE_FUNCTION_URL = "https://sxinuiwawpruwzxfcgpc.supabase.co/functions/v1";
+const DISPATCH_BACKUP_URL = `${BASE_FUNCTION_URL}/dispatch-backup-workflow`;
+
 
 // --- UI bits ---
 function SectionHeader({ title, right }) {
@@ -82,6 +87,8 @@ export default function AdminBackups() {
   const [selected, setSelected] = useState(null);
   const [leaveTypes, setLeaveTypes] = useState([]);
   const [usersById, setUsersById] = useState({});
+  const [dispatching, setDispatching] = useState(false);
+
 
   // Sorting — default by run_ts/created_at_ts (so manual backups on same date sort correctly)
   const [sortField, setSortField] = useState("created_at_ts"); // "created_at_ts" | "user_name" | "user_email" | "snapshot_date"
@@ -184,6 +191,44 @@ export default function AdminBackups() {
     return arr;
   }, [filtered, sortField, sortAsc]);
 
+const runBackupNow = async () => {
+  if (dispatching) return;
+
+  setDispatching(true);
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+
+    if (!token) {
+      toast.error("No session found. Please log in again.");
+      return;
+    }
+
+    const res = await fetch(DISPATCH_BACKUP_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({}),
+    });
+
+    const payload = await res.json().catch(() => ({}));
+
+    if (!res.ok || payload?.ok !== true) {
+      throw new Error(payload?.error || "Failed to trigger backup workflow");
+    }
+
+    toast.success("Backup workflow triggered on GitHub.");
+  } catch (e) {
+    console.error(e);
+    toast.error(e.message || "Failed to trigger backup workflow");
+  } finally {
+    setDispatching(false);
+  }
+};
+
+
   // --- Exports ---
   const exportMonthCSV = () => {
     const rows = sorted.map(r => ({
@@ -261,6 +306,23 @@ export default function AdminBackups() {
               style={{border:"1px solid #ddd", borderRadius:8, padding:"6px 10px", fontFamily:"Urbanist, system-ui, sans-serif", minWidth:240}}
             />
             <button
+  onClick={runBackupNow}
+  disabled={dispatching}
+  style={{
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: `1px solid ${COLORS.red}`,
+    background: dispatching ? COLORS.veryLightBlue : "#fff",
+    color: COLORS.grayDark,
+    fontFamily: "Urbanist, system-ui",
+    opacity: dispatching ? 0.7 : 1,
+    cursor: dispatching ? "not-allowed" : "pointer",
+  }}
+  title="Trigger the GitHub Action manually"
+>
+  {dispatching ? "Triggering…" : "Run Backup Now"}
+</button>
+<button
               onClick={exportMonthCSV}
               style={{padding:"8px 12px", borderRadius:8, border:`1px solid ${COLORS.orange}`, background:"#fff", color:COLORS.grayDark, fontFamily:"Urbanist, system-ui"}}
               title="Export current view as CSV"

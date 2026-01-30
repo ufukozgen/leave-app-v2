@@ -26,6 +26,10 @@ function jsonResponse(
   });
 }
 
+function normalizeEmail(v: unknown): string {
+  return String(v ?? "").trim().toLowerCase();
+}
+
 async function assertUserIsActive(
   supabase: any,
   userId: string,
@@ -55,115 +59,133 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  const reqId = crypto.randomUUID();
+
   try {
     const { request_id, rejection_reason } = await req.json();
+    if (!request_id) {
+      return jsonResponse({ error: "request_id is required" }, 400, corsHeaders);
+    }
+
     const authHeader = req.headers.get("authorization") || "";
-    const jwt = authHeader.replace("Bearer ", "");
+    const jwt = authHeader.replace("Bearer ", "").trim();
+    if (!jwt) {
+      return jsonResponse({ error: "Missing Authorization token" }, 401, corsHeaders);
+    }
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      { global: { headers: { Authorization: `Bearer ${jwt}` } } },
     );
 
     // Authenticate actor (the person doing the reject)
     const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
     if (userError || !user) {
-      console.log("Kullanıcı doğrulanamadı:", userError, user);
-      return new Response(JSON.stringify({ error: "Kullanıcı doğrulanamadı" }), {
-        status: 401, headers: corsHeaders
-      });
+      console.log(`[reject-leave ${reqId}] auth failed:`, userError);
+      return jsonResponse({ error: "Kullanıcı doğrulanamadı" }, 401, corsHeaders);
     }
-// ✅ Actor guard: caller must be active
-{
-  const blocked = await assertUserIsActive(supabase, user.id, corsHeaders);
-  if (blocked) return blocked;
-}
 
-    // Load the leave request
+    console.log(`[reject-leave ${reqId}] caller:`, user.email, "request_id:", request_id);
+
+    // ✅ Actor guard
+    {
+      const blocked = await assertUserIsActive(supabase, user.id, corsHeaders);
+      if (blocked) return blocked;
+    }
+
+    // Load the leave request (IMPORTANT: include leave.email)
     const { data: leave, error: leaveError } = await supabase
       .from("leave_requests")
-      .select("id, user_id, status, manager_email, start_date, end_date, days, location, note")
+      .select("id, user_id, email, status, manager_email, start_date, end_date, days, location, note")
       .eq("id", request_id)
       .maybeSingle();
 
     if (leaveError || !leave) {
-      console.log("Talep bulunamadı:", leaveError, leave);
-      return new Response(JSON.stringify({ error: "Talep bulunamadı" }), {
-        status: 404, headers: corsHeaders
-      });
+      console.log(`[reject-leave ${reqId}] leave not found:`, leaveError);
+      return jsonResponse({ error: "Talep bulunamadı" }, 404, corsHeaders);
     }
-// ✅ Target guard: request owner must be active (recommended)
-{
-  const blockedTarget = await assertUserIsActive(
-    supabase,
-    leave.user_id,
-    corsHeaders,
-    "Target user is archived",
-  );
-  if (blockedTarget) {
-    return jsonResponse({ error: "Target user is archived" }, 409, corsHeaders);
-  }
-}
+
+    // ✅ Target guard
+    {
+      const blockedTarget = await assertUserIsActive(
+        supabase,
+        leave.user_id,
+        corsHeaders,
+        "Target user is archived",
+      );
+      if (blockedTarget) return jsonResponse({ error: "Target user is archived" }, 409, corsHeaders);
+    }
 
     // Get actor record (role/email/name)
-    const { data: actor } = await supabase
+    const { data: actor, error: actorErr } = await supabase
       .from("users")
       .select("role, email, name")
       .eq("id", user.id)
       .maybeSingle();
 
+    if (actorErr) console.log(`[reject-leave ${reqId}] actor lookup error:`, actorErr);
+
     if (!actor) {
-      console.log("Kullanıcı bulunamadı:", actor);
-      return new Response(JSON.stringify({ error: "Kullanıcı bulunamadı" }), {
-        status: 401, headers: corsHeaders
-      });
+      return jsonResponse({ error: "Kullanıcı bulunamadı" }, 401, corsHeaders);
     }
 
     // Only manager or admin can reject
-    const isManager = actor.email === leave.manager_email;
+    const isManager = normalizeEmail(actor.email) === normalizeEmail(leave.manager_email);
     const isAdmin = actor.role === "admin";
     if (!isManager && !isAdmin) {
-      return new Response(JSON.stringify({ error: "Yetkiniz yok." }), {
-        status: 403, headers: corsHeaders
-      });
+      return jsonResponse({ error: "Yetkiniz yok." }, 403, corsHeaders);
     }
 
     // Only Pending can be rejected
     if (leave.status !== "Pending") {
-      return new Response(JSON.stringify({ error: "Yalnızca bekleyen talepler reddedilebilir." }), {
-        status: 400, headers: corsHeaders
-      });
+      return jsonResponse({ error: "Yalnızca bekleyen talepler reddedilebilir." }, 409, corsHeaders);
     }
 
-    // Reject the leave
-    const { error: updateError } = await supabase
+    // Reject the leave (conditional, prevents race)
+    const { data: updatedRows, error: updateError } = await supabase
       .from("leave_requests")
       .update({
         status: "Rejected",
-        approval_date: new Date().toISOString(), // keeping your pattern of stamping this field
-        rejection_reason: rejection_reason || null
+        approval_date: new Date().toISOString(),
+        rejection_reason: rejection_reason || null,
       })
-      .eq("id", request_id);
+      .eq("id", request_id)
+      .eq("status", "Pending")
+      .select("id")
+      .limit(1);
 
     if (updateError) {
-      console.log("Reddetme başarısız:", updateError);
-      return new Response(JSON.stringify({ error: "Reddetme başarısız" }), {
-        status: 500, headers: corsHeaders
-      });
+      console.log(`[reject-leave ${reqId}] reject update failed:`, updateError);
+      return jsonResponse({ error: "Reddetme başarısız" }, 500, corsHeaders);
+    }
+    if (!updatedRows || updatedRows.length === 0) {
+      return jsonResponse({ error: "Talep zaten işlenmiş olabilir (durumu değişmiş)." }, 409, corsHeaders);
     }
 
-    // Fetch employee (the owner of the leave)
-    const { data: employee } = await supabase
-      .from("users")
-      .select("id, email, name")
-      .eq("id", leave.user_id)
-      .maybeSingle();
+    console.log(`[reject-leave ${reqId}] rejected leave id:`, leave.id);
 
-    // Log the action
+    // Optional: employee name lookup (nice-to-have)
+    const employeeEmail = normalizeEmail(leave.email);
+    let employeeName = "";
+
+    try {
+      const { data: empRow, error: empErr } = await supabase
+        .from("users")
+        .select("name")
+        .eq("id", leave.user_id)
+        .maybeSingle();
+      if (empErr) console.log(`[reject-leave ${reqId}] employee name lookup error:`, empErr);
+      employeeName = empRow?.name || "";
+    } catch (_e) {
+      // ignore
+    }
+
+    // Log the action (best-effort; may fail due to logs RLS)
     try {
       await supabase.from("logs").insert([{
-        user_id: user.id,                  // actor (rejector)
-        actor_email: actor.email,          // use actor.email for consistency
+        user_id: user.id,
+        actor_email: actor.email,
         action: "reject_request",
         target_table: "leave_requests",
         target_id: leave.id,
@@ -176,64 +198,67 @@ serve(async (req) => {
           location: leave.location,
           note: leave.note,
           rejection_reason: rejection_reason || null,
-        }
+          req_id: reqId,
+        },
       }]);
     } catch (logError) {
-      console.error("Failed to log action:", logError);
-      // don't block main flow
+      console.error(`[reject-leave ${reqId}] DB logging failed (RLS likely):`, logError);
     }
 
-    // Reconcile OOO (harmless if your policy only considers Approved leaves)
+    // Reconcile OOO (non-blocking)
     try {
-      if (employee?.email) {
-        await reconcileUserOOO(supabase, { user_id: leave.user_id, email: employee.email });
+      if (employeeEmail) {
+        await reconcileUserOOO(supabase, { user_id: leave.user_id, email: employeeEmail });
       }
     } catch (e) {
-      console.error("reconcileUserOOO (after reject) failed:", e);
+      console.error(`[reject-leave ${reqId}] reconcileUserOOO failed:`, e);
     }
 
-    // Notify the employee by email
-    if (employee?.email) {
-      await sendGraphEmail({
-        to: employee.email,
-        subject: "İzin Talebiniz Reddedildi",
-        html: `
-          <p>Sayın ${employee.name || employee.email},</p>
-          <p>Yöneticiniz aşağıdaki izin talebinizi <b>reddetti</b>:</p>
-          <ul>
-            <li>Başlangıç: ${leave.start_date}</li>
-            <li>Bitiş: ${leave.end_date}</li>
-            <li>Gün: ${leave.days}</li>
-          </ul>
-          ${rejection_reason ? `<p><b>Red Nedeni:</b> ${rejection_reason}</p>` : ""}
-          <p>Detaylar için yöneticinizle görüşebilirsiniz.</p>
-          <br/>
-          <a href="https://leave-app-v2.vercel.app" 
-             style="
-               display:inline-block;
-               padding:10px 20px;
-               background:#F39200;
-               color:#fff;
-               border-radius:8px;
-               text-decoration:none;
-               font-weight:bold;
-               font-family:Calibri, Arial, sans-serif;
-               font-size:16px;
-               margin-top:10px;">
-             İzin Uygulamasına Git
-          </a>
-        `,
-      });
+    // Notify the employee by email (robust: uses leave.email)
+    if (!employeeEmail) {
+      console.log(`[reject-leave ${reqId}] missing leave.email; skipping employee email`);
+    } else {
+      console.log(`[reject-leave ${reqId}] About to email employee:`, employeeEmail);
+      try {
+        await sendGraphEmail({
+          to: employeeEmail,
+          subject: "İzin Talebiniz Reddedildi",
+          html: `
+            <p>Sayın ${employeeName || employeeEmail},</p>
+            <p>Yöneticiniz aşağıdaki izin talebinizi <b>reddetti</b>:</p>
+            <ul>
+              <li>Başlangıç: ${leave.start_date}</li>
+              <li>Bitiş: ${leave.end_date}</li>
+              <li>Gün: ${leave.days}</li>
+            </ul>
+            ${rejection_reason ? `<p><b>Red Nedeni:</b> ${rejection_reason}</p>` : ""}
+            <p>Detaylar için yöneticinizle görüşebilirsiniz.</p>
+            <br/>
+            <a href="https://leave-app-v2.vercel.app"
+               style="
+                 display:inline-block;
+                 padding:10px 20px;
+                 background:#F39200;
+                 color:#fff;
+                 border-radius:8px;
+                 text-decoration:none;
+                 font-weight:bold;
+                 font-family:Calibri, Arial, sans-serif;
+                 font-size:16px;
+                 margin-top:10px;">
+               İzin Uygulamasına Git
+            </a>
+          `,
+        });
+        console.log(`[reject-leave ${reqId}] employee email SENT`);
+      } catch (e) {
+        console.error(`[reject-leave ${reqId}] employee email FAILED:`, e);
+      }
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200, headers: corsHeaders
-    });
-
+    return jsonResponse({ success: true, req_id: reqId }, 200, corsHeaders);
   } catch (e: any) {
     console.log("reject-leave error:", e);
-    return new Response(JSON.stringify({ error: "Beklenmeyen hata: " + (e?.message || e) }), {
-      status: 500, headers: corsHeaders
-    });
+    return jsonResponse({ error: "Beklenmeyen hata: " + (e?.message || String(e)) }, 500, corsHeaders);
   }
 });

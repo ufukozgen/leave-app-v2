@@ -2,6 +2,18 @@
 
 export const RELEASES = [
   {
+  version: "v2.4.0",
+  date: "2026-01-30",
+  notes: [
+    "🗓️ Admin paneline 'Run Backup Now' (manuel bakiye yedeği) butonu eklendi",
+    "⚙️ dispatch-backup-workflow Edge Function eklendi (GitHub Actions workflow_dispatch tetikleme)",
+    "🔐 Manuel tetikleme Supabase JWT + admin yetkisi ile server-side doğrulanıyor",
+    "♻️ Mevcut aylık scheduled backup akışı aynen korunuyor (cron değişmedi)",
+  ],
+},
+
+  
+  {
   version: "v2.3.0",
   date: "2026-01-05",
   notes: [

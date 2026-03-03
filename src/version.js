@@ -2,6 +2,17 @@
 
 export const RELEASES = [
   {
+  version: "v2.4.1",
+  date: "2026-03-03",
+  notes: [
+    "🌓 Yarım gün izin düşüm hatası düzeltildi (half-am / half-pm artık 0.5 gün düşülür)",
+    "📆 İzin düşümü artık duration_type bilgisiyle yeniden hesaplanıyor",
+    "🏛️ Sonradan eklenen resmi tatiller yarım gün izinlerle doğru çakıştırılıyor",
+    "🛠️ calcLeaveDays fonksiyonu half-am / half-pm desteği ile güncellendi"
+  ],
+},
+  
+  {
   version: "v2.4.0",
   date: "2026-01-30",
   notes: [

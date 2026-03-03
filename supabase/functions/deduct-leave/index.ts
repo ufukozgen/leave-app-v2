@@ -98,7 +98,7 @@ serve(async (req) => {
     // Fetch leave request (include email so we can always notify)
     const { data: leave, error: leaveError } = await supabase
       .from("leave_requests")
-      .select("id, user_id, email, leave_type_id, days, deducted_days, status, manager_email, start_date, end_date, location, note")
+      .select("id, user_id, email, leave_type_id, days, deducted_days, status, manager_email, start_date, end_date, location, note, duration_type")
       .eq("id", request_id)
       .maybeSingle();
 
@@ -155,18 +155,18 @@ serve(async (req) => {
     }
 
     // Recalculate deduction days at deduction-time
-    const computedDaysToDeduct = calcLeaveDays({
-      startDate: leave.start_date,
-      endDate: leave.end_date,
-      holidays: (holidayRows || []).map((h) => ({
-        date: h.date,
-        is_half_day: h.is_half_day,
-        half: h.half,
-      })),
-    });
+const computedDaysToDeduct = calcLeaveDays({
+  startDate: leave.start_date,
+  endDate: leave.end_date,
+  holidays: (holidayRows || []).map((h) => ({
+    date: h.date,
+    is_half_day: h.is_half_day,
+    half: h.half,
+  })),
+  durationType: leave.duration_type,
+});
 
-    const daysToDeduct = Number(computedDaysToDeduct);
-
+const daysToDeduct = Number(computedDaysToDeduct);
     // ✅ Prevent double-deduct race:
     // Update only if status is still Approved at the time of update
     const { data: updatedRows, error: updateLeaveError } = await supabase

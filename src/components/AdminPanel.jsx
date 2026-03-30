@@ -1,9 +1,9 @@
 // src/components/AdminPanel.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "../supabaseClient";
 import { useUser } from "./UserContext";
 import { toast } from "react-hot-toast";
-import AdminBackups from "./AdminBackups.jsx"; // <-- new tab
+import AdminBackups from "./AdminBackups.jsx";
 
 // --- Brand palette (matches app spec) ---
 const COLORS = {
@@ -15,20 +15,41 @@ const COLORS = {
   grayDark: "#434344",
   gray: "#818285",
   yellow: "#F0B357",
+  green: "#2e7d32",
 };
 
-// Edge Function URLs (as in your current file)
+// Edge Function URLs
 const BASE_FUNCTION_URL = "https://sxinuiwawpruwzxfcgpc.supabase.co/functions/v1";
 const EDGE_FUNCTION_URL = `${BASE_FUNCTION_URL}/update-leave-balance`;
 const ASSIGN_MANAGER_URL = `${BASE_FUNCTION_URL}/assign-manager`;
 const ASSIGN_ROLE_URL = `${BASE_FUNCTION_URL}/assign-role`;
+const UPDATE_USER_INFO_URL = `${BASE_FUNCTION_URL}/update-user-info`;
+const BULK_COMPANY_LEAVE_URL = `${BASE_FUNCTION_URL}/bulk-company-leave`;
 
 // --- Small UI bits ---
 function Section({ title, children, right }) {
   return (
     <div style={{ marginTop: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "10px 0 14px" }}>
-        <h2 style={{ fontFamily: "Urbanist, system-ui", fontWeight: 700, color: COLORS.grayDark, margin: 0 }}>{title}</h2>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          margin: "10px 0 14px",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <h2
+          style={{
+            fontFamily: "Urbanist, system-ui",
+            fontWeight: 700,
+            color: COLORS.grayDark,
+            margin: 0,
+          }}
+        >
+          {title}
+        </h2>
         {right}
       </div>
       {children}
@@ -37,7 +58,9 @@ function Section({ title, children, right }) {
 }
 
 function Pill({ tone = "info", children }) {
-  const border = { info: COLORS.blue, warn: COLORS.yellow, error: COLORS.red, ok: "#2e7d32" }[tone] || COLORS.blue;
+  const border =
+    { info: COLORS.blue, warn: COLORS.yellow, error: COLORS.red, ok: COLORS.green }[tone] || COLORS.blue;
+
   return (
     <span
       style={{
@@ -68,19 +91,70 @@ function formatDateTR(dateStr) {
   return `${day}/${month}/${year}`;
 }
 
-/**
- * Initials normalization (TR-safe)
- * - keeps only letters incl. Turkish
- * - max 3 chars
- * - uppercases in tr-TR locale so i->İ, ı->I correctly
- */
 function normalizeInitialsTR(input) {
   const raw = String(input ?? "");
   const lettersOnly = raw.replace(/[^A-Za-zÇĞİÖŞÜçğıöşü]/g, "").slice(0, 3);
   return lettersOnly.toLocaleUpperCase("tr-TR");
 }
 
-// --- Table styles (kept from your current file) ---
+function todayISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function isHalfDuration(durationType) {
+  return durationType === "half-am" || durationType === "half-pm";
+}
+
+function getDurationLabel(durationType) {
+  if (durationType === "half-am") return "Yarım Gün (Sabah)";
+  if (durationType === "half-pm") return "Yarım Gün (Öğleden Sonra)";
+  return "Tam Gün";
+}
+
+function getStatusTone(status) {
+  switch (status) {
+    case "ready":
+    case "processed":
+      return "ok";
+    case "insufficient_balance":
+      return "warn";
+    case "overlap":
+    case "inactive":
+    case "error":
+      return "error";
+    default:
+      return "info";
+  }
+}
+
+function getStatusLabel(status) {
+  switch (status) {
+    case "ready":
+      return "Hazır";
+    case "processed":
+      return "İşlendi";
+    case "insufficient_balance":
+      return "Bakiye Yetersiz";
+    case "overlap":
+      return "Çakışan İzin";
+    case "inactive":
+      return "Pasif Kullanıcı";
+    case "missing_balance":
+      return "Bakiye Kaydı Yok";
+    case "skipped":
+      return "Atlandı";
+    case "error":
+      return "Hata";
+    default:
+      return status || "-";
+  }
+}
+
+// --- Table styles ---
 const th = {
   padding: "8px 10px",
   fontWeight: 700,
@@ -108,21 +182,35 @@ const inputStyle = {
   color: "#434344",
 };
 
+const textAreaStyle = {
+  width: "100%",
+  fontSize: 15,
+  fontFamily: "Urbanist, Arial, sans-serif",
+  border: "1px solid #CDE5F4",
+  borderRadius: 8,
+  padding: "8px 10px",
+  outline: "none",
+  background: "#F9FBFC",
+  color: "#434344",
+  resize: "vertical",
+};
+
 export default function AdminPanel() {
   const { dbUser, loading } = useUser();
 
-  // --- NEW: tabs
   const TABS = [
     { key: "users", label: "Kullanıcılar" },
+    { key: "bulk", label: "Toplu İzin İşlemi" },
     { key: "settings", label: "Ayarlar" },
     { key: "holidays", label: "Resmi Tatiller" },
     { key: "backups", label: "Yedekler" },
   ];
+
   const [active, setActive] = useState("users");
 
-  // --- Existing state from your file
   const [users, setUsers] = useState([]);
   const [annualType, setAnnualType] = useState(null);
+  const [leaveTypes, setLeaveTypes] = useState([]);
   const [balances, setBalances] = useState([]);
   const [editing, setEditing] = useState({});
   const [message, setMessage] = useState("");
@@ -141,38 +229,115 @@ export default function AdminPanel() {
   const [refreshingUserId, setRefreshingUserId] = useState(null);
   const [recentlyRefreshedUserId, setRecentlyRefreshedUserId] = useState(null);
   const [archivingUserId, setArchivingUserId] = useState(null);
-  const [archiveReason, setArchiveReason] = useState("");
 
+  // --- Bulk leave state ---
+  const [bulkUserFilter, setBulkUserFilter] = useState("");
+  const [bulkLoadingPreview, setBulkLoadingPreview] = useState(false);
+  const [bulkApplying, setBulkApplying] = useState(false);
+  const [bulkPreview, setBulkPreview] = useState(null);
+  const [bulkForm, setBulkForm] = useState({
+    user_ids: [],
+    leave_type_id: "",
+    start_date: todayISO(),
+    end_date: todayISO(),
+    duration_type: "full",
+    location: "Company-wide leave",
+    note: "",
+    send_email: false,
+  });
 
-  // Fetch all users, balances, holidays, etc.  (kept from your flow)
   useEffect(() => {
     async function fetchAll() {
-      const { data: usersData } = await supabase.from("users").select("id, name, email, role, manager_email, initials").eq("is_active", true);
+      const { data: usersData } = await supabase
+        .from("users")
+        .select("id, name, email, role, manager_email, initials")
+        .eq("is_active", true);
+
       setUsers(usersData || []);
 
-      const { data: typeData } = await supabase.from("leave_types").select("*").eq("name", "Annual").maybeSingle();
+      const { data: typeData } = await supabase
+        .from("leave_types")
+        .select("*")
+        .eq("name", "Annual")
+        .maybeSingle();
+
       setAnnualType(typeData);
 
+      const { data: leaveTypesData } = await supabase
+        .from("leave_types")
+        .select("*")
+        .order("name", { ascending: true });
+
+      setLeaveTypes(leaveTypesData || []);
+
       if (typeData) {
-        const { data: balData } = await supabase.from("leave_balances").select("*").eq("leave_type_id", typeData.id);
+        const { data: balData } = await supabase
+          .from("leave_balances")
+          .select("*")
+          .eq("leave_type_id", typeData.id);
+
         setBalances(balData || []);
       }
 
       const { data: holData } = await supabase.from("holidays").select("*").order("date");
       setHolidays(holData || []);
 
-      // Settings (retroactive flag)
-      const { data: settings } = await supabase.from("settings").select("allow_retroactive_leave").eq("id", 1).maybeSingle();
+      const { data: settings } = await supabase
+        .from("settings")
+        .select("allow_retroactive_leave")
+        .eq("id", 1)
+        .maybeSingle();
+
       if (settings && typeof settings.allow_retroactive_leave === "boolean") {
         setAllowRetroactiveLeave(settings.allow_retroactive_leave);
       }
 
       setLoadingAnnualType(false);
     }
+
     fetchAll();
   }, []);
 
-  // --- Handlers from your file (unchanged in behavior)
+  useEffect(() => {
+    if (!bulkForm.leave_type_id && leaveTypes.length > 0) {
+      const annual = leaveTypes.find((lt) => lt.name === "Annual");
+      setBulkForm((prev) => ({
+        ...prev,
+        leave_type_id: annual?.id || leaveTypes[0].id,
+      }));
+    }
+  }, [leaveTypes, bulkForm.leave_type_id]);
+
+  useEffect(() => {
+    if (isHalfDuration(bulkForm.duration_type) && bulkForm.end_date !== bulkForm.start_date) {
+      setBulkForm((prev) => ({
+        ...prev,
+        end_date: prev.start_date,
+      }));
+    }
+  }, [bulkForm.duration_type, bulkForm.start_date, bulkForm.end_date]);
+
+  const filteredBulkUsers = useMemo(() => {
+    const q = bulkUserFilter.trim().toLocaleLowerCase("tr-TR");
+    const sorted = [...users].sort((a, b) => {
+      const an = a.name || a.email || "";
+      const bn = b.name || b.email || "";
+      return an.localeCompare(bn, "tr");
+    });
+
+    if (!q) return sorted;
+
+    return sorted.filter((u) => {
+      const hay = `${u.name || ""} ${u.email || ""} ${u.manager_email || ""}`.toLocaleLowerCase("tr-TR");
+      return hay.includes(q);
+    });
+  }, [users, bulkUserFilter]);
+
+  const selectedBulkUsers = useMemo(() => {
+    const setIds = new Set(bulkForm.user_ids);
+    return users.filter((u) => setIds.has(u.id));
+  }, [users, bulkForm.user_ids]);
+
   function onEdit(user_id, field, value) {
     setEditing((prev) => ({ ...prev, [`${user_id}_${field}`]: value }));
   }
@@ -194,25 +359,39 @@ export default function AdminPanel() {
     toast("İşlem iptal edildi.");
   }
 
+  async function getAuthTokenOrToast() {
+    let token = "";
+    try {
+      const { data } = await supabase.auth.getSession();
+      token = data?.session?.access_token;
+    } catch {
+      token = "";
+    }
+
+    if (!token) {
+      setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
+      toast.error("Oturum bulunamadı, lütfen tekrar giriş yapın.");
+      return null;
+    }
+
+    return token;
+  }
+
   async function onConfirmSave() {
     if (!confirmingUser) return;
+
     setConfirmingUser(null);
     setAdminNote("");
     setSavingUserId(confirmingUser.id);
     setMessage("");
+
     const bal = getBal(confirmingUser?.id);
     const key = (field) => `${confirmingUser.id}_${field}`;
     const parseOrZero = (val) => (isNaN(Number(val)) || val === "" ? 0 : Number(val));
     const remaining = parseOrZero(editing[key("remaining")] ?? bal?.remaining ?? "");
 
-    let token = "";
-    try {
-      const { data } = await supabase.auth.getSession();
-      token = data?.session?.access_token;
-    } catch {}
+    const token = await getAuthTokenOrToast();
     if (!token) {
-      setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
-      toast.error("Oturum bulunamadı, lütfen tekrar giriş yapın.");
       setSavingUserId(null);
       setConfirmingUser(null);
       setAdminNote("");
@@ -231,20 +410,23 @@ export default function AdminPanel() {
           note: adminNote,
         }),
       });
+
       const data = await res.json();
+
       if (!data.success) {
         setMessage(data.error || "Kaydetme işlemi başarısız oldu.");
         toast.error(data.error || "Kaydetme işlemi başarısız oldu.");
       } else {
         setBalances((prev) => {
           let found = false;
-          const updated = prev.map((bal) => {
-            if (bal.user_id === confirmingUser.id && bal.leave_type_id === annualType.id) {
+          const updated = prev.map((balItem) => {
+            if (balItem.user_id === confirmingUser.id && balItem.leave_type_id === annualType.id) {
               found = true;
-              return { ...bal, remaining, last_updated: new Date().toISOString() };
+              return { ...balItem, remaining, last_updated: new Date().toISOString() };
             }
-            return bal;
+            return balItem;
           });
+
           if (!found) {
             updated.push({
               user_id: confirmingUser.id,
@@ -253,46 +435,45 @@ export default function AdminPanel() {
               last_updated: new Date().toISOString(),
             });
           }
+
           return updated;
         });
+
         setMessage("Kaydedildi ve bildirim gönderildi.");
         toast.success("Bakiye güncellendi ve e-posta gönderildi!");
       }
-    } catch (err) {
+    } catch {
       setMessage("Kaydetme sırasında hata oluştu.");
       toast.error("Kaydetme sırasında hata oluştu.");
     }
+
     setSavingUserId(null);
   }
 
   async function handleManagerChange(userId, newManagerEmail) {
     setMessage("");
-    let token = "";
-    try {
-      const { data } = await supabase.auth.getSession();
-      token = data?.session?.access_token;
-    } catch {}
-    if (!token) {
-      setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
-      toast.error("Oturum bulunamadı, lütfen tekrar giriş yapın.");
-      return;
-    }
+
+    const token = await getAuthTokenOrToast();
+    if (!token) return;
+
     try {
       const res = await fetch(ASSIGN_MANAGER_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ user_id: userId, manager_email: newManagerEmail }),
       });
+
       const data = await res.json();
+
       if (!data.success) {
         setMessage(data.error || "Yönetici atama başarısız.");
         toast.error(data.error || "Yönetici atama başarısız.");
       } else {
-        setUsers((users) => users.map((u) => (u.id === userId ? { ...u, manager_email: newManagerEmail } : u)));
+        setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, manager_email: newManagerEmail } : u)));
         setMessage("Yönetici değiştirildi.");
         toast.success("Yönetici değiştirildi.");
       }
-    } catch (err) {
+    } catch {
       setMessage("Yönetici atama sırasında hata oluştu.");
       toast.error("Yönetici atama sırasında hata oluştu.");
     }
@@ -301,14 +482,9 @@ export default function AdminPanel() {
   async function onSaveUserInfo(user) {
     setSavingUserId(user.id);
     setMessage("");
-    let token = "";
-    try {
-      const { data } = await supabase.auth.getSession();
-      token = data?.session?.access_token;
-    } catch {}
+
+    const token = await getAuthTokenOrToast();
     if (!token) {
-      setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
-      toast.error("Oturum bulunamadı, lütfen tekrar giriş yapın.");
       setSavingUserId(null);
       return;
     }
@@ -322,6 +498,7 @@ export default function AdminPanel() {
       setSavingUserId(null);
       return;
     }
+
     if (!name.trim()) {
       setMessage("Ad alanı boş olamaz.");
       toast.error("Ad alanı boş olamaz.");
@@ -330,17 +507,19 @@ export default function AdminPanel() {
     }
 
     try {
-      const res = await fetch(`${BASE_FUNCTION_URL}/update-user-info`, {
+      const res = await fetch(UPDATE_USER_INFO_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ user_id: user.id, name, initials }),
       });
+
       const data = await res.json();
+
       if (!data.success) {
         setMessage(data.error || "Kaydetme işlemi başarısız oldu.");
         toast.error(data.error || "Kaydetme işlemi başarısız oldu.");
       } else {
-        setUsers((users) => users.map((u) => (u.id === user.id ? { ...u, name, initials } : u)));
+        setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, name, initials } : u)));
         setMessage("Kullanıcı adı ve baş harfler güncellendi.");
         toast.success("Kullanıcı adı ve baş harfler güncellendi!");
         setEditing((ed) => {
@@ -354,33 +533,30 @@ export default function AdminPanel() {
       setMessage("Kaydetme sırasında hata oluştu.");
       toast.error("Kaydetme sırasında hata oluştu.");
     }
+
     setSavingUserId(null);
   }
 
   async function handleRoleChange(userId, newRole) {
     setMessage("");
-    let token = "";
-    try {
-      const { data } = await supabase.auth.getSession();
-      token = data?.session?.access_token;
-    } catch {}
-    if (!token) {
-      setMessage("Oturum bulunamadı, lütfen tekrar giriş yapın.");
-      toast.error("Oturum bulunamadı, lütfen tekrar giriş yapın.");
-      return;
-    }
+
+    const token = await getAuthTokenOrToast();
+    if (!token) return;
+
     try {
       const res = await fetch(ASSIGN_ROLE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ user_id: userId, role: newRole }),
       });
+
       const data = await res.json();
+
       if (!data.success) {
         setMessage(data.error || "Rol atama başarısız.");
         toast.error(data.error || "Rol atama başarısız.");
       } else {
-        setUsers((users) => users.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
+        setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
         setMessage("Rol güncellendi.");
         toast.success("Rol güncellendi.");
       }
@@ -389,59 +565,61 @@ export default function AdminPanel() {
       toast.error("Rol atama sırasında hata oluştu.");
     }
   }
+
   async function archiveUser(user) {
-  const ok = window.confirm(
-    `${user.name || user.email} kullanıcısını arşivlemek istediğinize emin misiniz?\n\n` +
-      "Bu işlem kullanıcıyı pasifleştirir. Geçmiş izin kayıtları korunur."
-  );
-  if (!ok) return;
+    const ok = window.confirm(
+      `${user.name || user.email} kullanıcısını arşivlemek istediğinize emin misiniz?\n\n` +
+        "Bu işlem kullanıcıyı pasifleştirir. Geçmiş izin kayıtları korunur."
+    );
+    if (!ok) return;
 
-  const reason = prompt("Arşiv sebebi (ör: İstifa / İşten ayrıldı / Sözleşme bitti):", "İşten ayrıldı");
-  if (reason === null) return; // user cancelled prompt
+    const reason = prompt("Arşiv sebebi (ör: İstifa / İşten ayrıldı / Sözleşme bitti):", "İşten ayrıldı");
+    if (reason === null) return;
 
-  setArchivingUserId(user.id);
-  setMessage("");
+    setArchivingUserId(user.id);
+    setMessage("");
 
-  const { error } = await supabase
-    .from("users")
-    .update({
-      is_active: false,
-      archived_at: new Date().toISOString(),
-      archived_reason: reason,
-    })
-    .eq("id", user.id);
+    const { error } = await supabase
+      .from("users")
+      .update({
+        is_active: false,
+        archived_at: new Date().toISOString(),
+        archived_reason: reason,
+      })
+      .eq("id", user.id);
 
-  if (error) {
-    setMessage("Arşivleme sırasında hata oluştu.");
-    toast.error(error.message || "Arşivleme sırasında hata oluştu.");
+    if (error) {
+      setMessage("Arşivleme sırasında hata oluştu.");
+      toast.error(error.message || "Arşivleme sırasında hata oluştu.");
+      setArchivingUserId(null);
+      return;
+    }
+
+    await supabase.from("users_logs").insert([
+      {
+        target_user_id: user.id,
+        action: "ARCHIVE_USER",
+        old_manager_email: user.manager_email ?? null,
+        new_manager_email: user.manager_email ?? null,
+        old_role: user.role ?? null,
+        new_role: user.role ?? null,
+        performed_by: dbUser.id,
+        performed_by_email: dbUser.email,
+        note: reason,
+      },
+    ]);
+
+    setUsers((prev) => prev.filter((u) => u.id !== user.id));
+
+    toast.success("Kullanıcı arşivlendi.");
+    setMessage("Kullanıcı arşivlendi.");
     setArchivingUserId(null);
-    return;
   }
-  await supabase.from("users_logs").insert([
-    {
-      target_user_id: user.id,
-      action: "ARCHIVE_USER",
-      old_manager_email: user.manager_email ?? null,
-      new_manager_email: user.manager_email ?? null,
-      old_role: user.role ?? null,
-      new_role: user.role ?? null,
-      performed_by: dbUser.id,
-      performed_by_email: dbUser.email,
-      note: reason,
-    },
-  ]);
-
-  // Remove from current view immediately (since we only show active users now)
-  setUsers((prev) => prev.filter((u) => u.id !== user.id));
-
-  toast.success("Kullanıcı arşivlendi.");
-  setMessage("Kullanıcı arşivlendi.");
-  setArchivingUserId(null);
-}
 
   async function handleRefreshUser(userId) {
     setRefreshingUserId(userId);
     setMessage("");
+
     const { data: updatedUser, error } = await supabase
       .from("users")
       .select("id, name, email, role, manager_email, initials")
@@ -454,7 +632,8 @@ export default function AdminPanel() {
       setRefreshingUserId(null);
       return;
     }
-    setUsers((users) => users.map((u) => (u.id === userId ? { ...u, ...updatedUser } : u)));
+
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...updatedUser } : u)));
     setMessage("Kullanıcı bilgisi yenilendi.");
     toast.success("Kullanıcı bilgisi yenilendi.");
     setRefreshingUserId(null);
@@ -465,8 +644,16 @@ export default function AdminPanel() {
   async function handleAddHoliday(e) {
     e.preventDefault();
     setAddingHoliday(true);
-    const newRow = { date: newHolidayDate, name: newHolidayName, is_half_day: isHalfDay, half: isHalfDay ? half : null };
+
+    const newRow = {
+      date: newHolidayDate,
+      name: newHolidayName,
+      is_half_day: isHalfDay,
+      half: isHalfDay ? half : null,
+    };
+
     const { data, error } = await supabase.from("holidays").insert([newRow]).select();
+
     if (!error && data && data[0]) {
       setHolidays([...holidays, data[0]]);
       setNewHolidayDate("");
@@ -477,24 +664,32 @@ export default function AdminPanel() {
     } else {
       toast.error(error?.message || "Tatil eklenemedi.");
     }
+
     setAddingHoliday(false);
   }
 
   async function onDeleteHoliday(h) {
     if (!window.confirm("Silmek istediğinize emin misiniz?")) return;
+
     setDeletingHolidayId(h.id);
     const { error } = await supabase.from("holidays").delete().eq("id", h.id);
+
     if (!error) {
       setHolidays(holidays.filter((hol) => hol.id !== h.id));
       toast.success("Tatil silindi.");
     } else {
       toast.error("Tatil silinirken hata oluştu.");
     }
+
     setDeletingHolidayId(null);
   }
 
   async function handleToggleRetroactive() {
-    const { error } = await supabase.from("settings").update({ allow_retroactive_leave: !allowRetroactiveLeave }).eq("id", 1);
+    const { error } = await supabase
+      .from("settings")
+      .update({ allow_retroactive_leave: !allowRetroactiveLeave })
+      .eq("id", 1);
+
     if (!error) {
       setAllowRetroactiveLeave(!allowRetroactiveLeave);
       toast.success(`Retroaktif izin ${!allowRetroactiveLeave ? "açıldı" : "kapatıldı"}.`);
@@ -503,10 +698,193 @@ export default function AdminPanel() {
     }
   }
 
-  // --- Loading guards (kept)
+  function setBulkField(field, value) {
+    setBulkForm((prev) => {
+      const next = { ...prev, [field]: value };
+
+      if (field === "duration_type" && isHalfDuration(value)) {
+        next.end_date = next.start_date;
+      }
+
+      if (field === "start_date" && isHalfDuration(prev.duration_type)) {
+        next.end_date = value;
+      }
+
+      return next;
+    });
+  }
+
+  function toggleBulkUser(userId) {
+    setBulkForm((prev) => {
+      const exists = prev.user_ids.includes(userId);
+      return {
+        ...prev,
+        user_ids: exists ? prev.user_ids.filter((id) => id !== userId) : [...prev.user_ids, userId],
+      };
+    });
+  }
+
+  function selectAllFilteredBulkUsers() {
+    const ids = filteredBulkUsers.map((u) => u.id);
+    setBulkForm((prev) => ({
+      ...prev,
+      user_ids: Array.from(new Set([...prev.user_ids, ...ids])),
+    }));
+  }
+
+  function clearAllBulkUsers() {
+    setBulkForm((prev) => ({
+      ...prev,
+      user_ids: [],
+    }));
+  }
+
+  function resetBulkPreview() {
+    setBulkPreview(null);
+  }
+
+  function validateBulkForm() {
+    if (!bulkForm.user_ids.length) {
+      toast.error("Lütfen en az bir çalışan seçin.");
+      return false;
+    }
+
+    if (!bulkForm.leave_type_id) {
+      toast.error("Lütfen izin türü seçin.");
+      return false;
+    }
+
+    if (!bulkForm.start_date || !bulkForm.end_date) {
+      toast.error("Lütfen başlangıç ve bitiş tarihlerini girin.");
+      return false;
+    }
+
+    if (bulkForm.start_date > bulkForm.end_date) {
+      toast.error("Başlangıç tarihi, bitiş tarihinden sonra olamaz.");
+      return false;
+    }
+
+    if (isHalfDuration(bulkForm.duration_type) && bulkForm.start_date !== bulkForm.end_date) {
+      toast.error("Yarım gün işleminde başlangıç ve bitiş tarihi aynı olmalıdır.");
+      return false;
+    }
+
+    return true;
+  }
+
+  async function handleBulkPreview() {
+    setMessage("");
+    resetBulkPreview();
+
+    if (!validateBulkForm()) return;
+
+    const token = await getAuthTokenOrToast();
+    if (!token) return;
+
+    setBulkLoadingPreview(true);
+
+    try {
+      const res = await fetch(BULK_COMPANY_LEAVE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          mode: "preview",
+          ...bulkForm,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data?.success) {
+        toast.error(data?.error || "Ön izleme alınamadı.");
+        setBulkPreview(null);
+        return;
+      }
+
+      setBulkPreview(data);
+      toast.success("Ön izleme hazır.");
+    } catch {
+      toast.error("Ön izleme sırasında hata oluştu.");
+      setBulkPreview(null);
+    } finally {
+      setBulkLoadingPreview(false);
+    }
+  }
+
+  async function handleBulkApply() {
+    if (!bulkPreview) {
+      toast.error("Önce ön izleme alın.");
+      return;
+    }
+
+    const token = await getAuthTokenOrToast();
+    if (!token) return;
+
+    let insufficientAction = "skip";
+    const insufficientCount = Number(bulkPreview?.summary?.insufficient_balance || 0);
+
+    if (insufficientCount > 0) {
+      const confirmDeduct = window.confirm(
+        `${insufficientCount} çalışan için bakiye yetersiz görünüyor.\n\n` +
+          `Tamam = Yetersiz bakiyeye rağmen düş\n` +
+          `İptal = Yetersiz bakiyeli çalışanları atla`
+      );
+
+      insufficientAction = confirmDeduct ? "deduct_anyway" : "skip";
+    }
+
+    const finalConfirm = window.confirm(
+      `Toplu izin işlemi uygulanacak.\n\n` +
+        `Seçili çalışan: ${bulkForm.user_ids.length}\n` +
+        `Yetersiz bakiye aksiyonu: ${
+          insufficientAction === "deduct_anyway" ? "Düş" : "Atla"
+        }\n\nDevam edilsin mi?`
+    );
+
+    if (!finalConfirm) {
+      toast("İşlem iptal edildi.");
+      return;
+    }
+
+    setBulkApplying(true);
+
+    try {
+      const res = await fetch(BULK_COMPANY_LEAVE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          mode: "apply",
+          insufficient_balance_action: insufficientAction,
+          ...bulkForm,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data?.success) {
+        toast.error(data?.error || "Toplu işlem uygulanamadı.");
+        return;
+      }
+
+      setBulkPreview(data);
+      toast.success("Toplu izin işlemi tamamlandı.");
+    } catch {
+      toast.error("Toplu işlem sırasında hata oluştu.");
+    } finally {
+      setBulkApplying(false);
+    }
+  }
+
   if (loading || loadingAnnualType || typeof annualType === "undefined" || !dbUser) {
     return <div style={{ fontFamily: "Urbanist" }}>Yükleniyor…</div>;
   }
+
   if (!annualType) {
     return <div style={{ fontFamily: "Urbanist" }}>'Yıllık' izin tipi tanımlı değil.</div>;
   }
@@ -524,12 +902,24 @@ export default function AdminPanel() {
       }}
     >
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h1 style={{ margin: 0, fontSize: 22, color: COLORS.grayDark, fontWeight: 800 }}>Yönetici Paneli</h1>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <h1 style={{ margin: 0, fontSize: 22, color: COLORS.grayDark, fontWeight: 800 }}>
+          Yönetici Paneli
+        </h1>
         {message && (
           <div
             style={{
-              color: message.includes("hata") || message.includes("başarısız") ? COLORS.red : "#1C6234",
+              color:
+                message.includes("hata") || message.includes("başarısız") ? COLORS.red : "#1C6234",
               fontWeight: 700,
             }}
           >
@@ -550,6 +940,7 @@ export default function AdminPanel() {
           padding: 6,
           borderRadius: 12,
           marginBottom: 14,
+          flexWrap: "wrap",
         }}
       >
         {TABS.map((t) => {
@@ -582,14 +973,13 @@ export default function AdminPanel() {
         <Section title="Kullanıcılar & Bakiyeler">
           <div style={{ overflowX: "auto" }}>
             <table
-  style={{
-    width: "100%",
-    fontSize: 16,
-    borderSpacing: 0,
-    minWidth: 820,
-  }}
->
-
+              style={{
+                width: "100%",
+                fontSize: 16,
+                borderSpacing: 0,
+                minWidth: 820,
+              }}
+            >
               <thead>
                 <tr style={{ background: COLORS.veryLightBlue, color: COLORS.grayDark }}>
                   <th></th>
@@ -597,222 +987,258 @@ export default function AdminPanel() {
                   <th style={th}>@terralab.com.tr</th>
                   <th style={th}>Rol</th>
                   <th style={th}>Yön.</th>
-                  <th style={{ ...th, borderLeft: `2px solid ${COLORS.veryLightBlue}`, width: 78 }}>Kalan</th>
-<th style={{ ...th, width: 70 }}>İşlem</th>
-
+                  <th style={{ ...th, borderLeft: `2px solid ${COLORS.veryLightBlue}`, width: 78 }}>
+                    Kalan
+                  </th>
+                  <th style={{ ...th, width: 70 }}>İşlem</th>
                 </tr>
               </thead>
               <tbody>
-                {[...users].sort((a, b) => a.email.localeCompare(b.email)).map((user) => {
-                  const key = (field) => `${user.id}_${field}`;
-                  const name = editing[key("name")] ?? user.name ?? "";
+                {[...users]
+                  .sort((a, b) => a.email.localeCompare(b.email))
+                  .map((user) => {
+                    const key = (field) => `${user.id}_${field}`;
+                    const name = editing[key("name")] ?? user.name ?? "";
+                    const initials = normalizeInitialsTR(editing[key("initials")] ?? user.initials ?? "");
+                    const remaining = editing[key("remaining")] ?? getBal(user.id).remaining ?? "";
+                    const username = user.email.replace("@terralab.com.tr", "");
+                    const highlight = recentlyRefreshedUserId === user.id;
 
-                  // ✅ IMPORTANT: always normalize what you DISPLAY, so "İLK." shows as "İLK"
-                  const initials = normalizeInitialsTR(editing[key("initials")] ?? user.initials ?? "");
+                    return (
+                      <tr
+                        key={user.id}
+                        style={{
+                          transition: "background 0.5s, opacity 0.5s",
+                          background: highlight ? "#e9faf5" : undefined,
+                          opacity: refreshingUserId === user.id ? 0.5 : 1,
+                        }}
+                      >
+                        <td style={{ ...td, width: 36, textAlign: "center", background: "#F8FBFD" }}>
+                          <button
+                            style={{
+                              background: "#F8FBFD",
+                              border: "none",
+                              borderRadius: 7,
+                              width: 28,
+                              height: 30,
+                              fontSize: 15,
+                              color: COLORS.gray,
+                              padding: 0,
+                              cursor: refreshingUserId === user.id ? "not-allowed" : "pointer",
+                            }}
+                            title="Satırı yenile"
+                            onClick={() => handleRefreshUser(user.id)}
+                            disabled={refreshingUserId === user.id}
+                          >
+                            🔄
+                          </button>
+                        </td>
 
-                  const remaining = editing[key("remaining")] ?? getBal(user.id).remaining ?? "";
-                  const username = user.email.replace("@terralab.com.tr", "");
-                  const highlight = recentlyRefreshedUserId === user.id;
-
-                  return (
-                    <tr
-                      key={user.id}
-                      style={{
-                        transition: "background 0.5s, opacity 0.5s",
-                        background: highlight ? "#e9faf5" : undefined,
-                        opacity: refreshingUserId === user.id ? 0.5 : 1,
-                      }}
-                    >
-                      {/* refresh */}
-                      <td style={{ ...td, width: 36, textAlign: "center", background: "#F8FBFD" }}>
-                        <button
+                        <td
                           style={{
-                            background: "#F8FBFD",
-                            border: "none",
-                            borderRadius: 7,
-                            width: 28,
-                            height: 30,
-                            fontSize: 15,
-                            color: COLORS.gray,
-                            padding: 0,
-                            cursor: refreshingUserId === user.id ? "not-allowed" : "pointer",
+                            ...td,
+                            textAlign: "left",
+                            minWidth: 120,
+                            maxWidth: 220,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
                           }}
-                          title="Satırı yenile"
-                          onClick={() => handleRefreshUser(user.id)}
-                          disabled={refreshingUserId === user.id}
                         >
-                          🔄
-                        </button>
-                      </td>
+                          <input
+                            type="text"
+                            value={name}
+                            onChange={(e) => onEdit(user.id, "name", e.target.value)}
+                            style={{
+                              ...inputStyle,
+                              width: 130,
+                              fontWeight: 600,
+                              fontSize: 15,
+                              marginRight: 2,
+                            }}
+                            maxLength={60}
+                            placeholder="Ad Soyad"
+                            autoComplete="off"
+                          />
 
-                      {/* name + initials */}
-                      <td style={{ ...td, textAlign: "left", minWidth: 120, maxWidth: 220, display: "flex", alignItems: "center", gap: 8 }}>
-                        <input
-                          type="text"
-                          value={name}
-                          onChange={(e) => onEdit(user.id, "name", e.target.value)}
-                          style={{ ...inputStyle, width: 130, fontWeight: 600, fontSize: 15, marginRight: 2 }}
-                          maxLength={60}
-                          placeholder="Ad Soyad"
-                          autoComplete="off"
-                        />
+                          <input
+                            type="text"
+                            value={initials}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => {
+                              const val = normalizeInitialsTR(e.target.value);
+                              onEdit(user.id, "initials", val);
+                            }}
+                            style={{
+                              ...inputStyle,
+                              width: 42,
+                              textAlign: "center",
+                              fontWeight: 700,
+                              fontSize: 14,
+                              background: "#FFF2DC",
+                              color: COLORS.orange,
+                            }}
+                            maxLength={3}
+                            minLength={2}
+                            placeholder="İLK."
+                            title="2–3 harf (TR), büyük harf"
+                            autoComplete="off"
+                          />
+                        </td>
 
-                        {/* ✅ INITIALS: click-to-replace + TR-safe normalize */}
-                        <input
-                          type="text"
-                          value={initials}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => {
-                            const val = normalizeInitialsTR(e.target.value);
-                            onEdit(user.id, "initials", val);
-                          }}
+                        <td
                           style={{
-                            ...inputStyle,
-                            width: 42,
-                            textAlign: "center",
-                            fontWeight: 700,
+                            ...td,
                             fontSize: 14,
-                            background: "#FFF2DC",
-                            color: COLORS.orange,
+                            maxWidth: 130,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
                           }}
-                          maxLength={3}
-                          minLength={2}
-                          placeholder="İLK."
-                          title="2–3 harf (TR), büyük harf"
-                          autoComplete="off"
-                        />
-                      </td>
+                        >
+                          {username}
+                        </td>
 
-                      {/* username */}
-                      <td style={{ ...td, fontSize: 14, maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis" }}>{username}</td>
+                        <td style={td}>
+                          {user.role === "admin" ? (
+                            <Pill tone="ok">Admin</Pill>
+                          ) : (
+                            <select
+                              value={user.role}
+                              onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                              style={{ ...inputStyle, width: 112 }}
+                            >
+                              <option value="user">Kullanıcı</option>
+                              <option value="manager">Yönetici</option>
+                            </select>
+                          )}
+                        </td>
 
-                      {/* role */}
-                      <td style={td}>
-                        {user.role === "admin" ? (
-                          <Pill tone="ok">Admin</Pill>
-                        ) : (
-                          <select value={user.role} onChange={(e) => handleRoleChange(user.id, e.target.value)} style={{ ...inputStyle, width: 112 }}>
-                            <option value="user">Kullanıcı</option>
-                            <option value="manager">Yönetici</option>
-                          </select>
-                        )}
-                      </td>
+                        <td style={{ ...td, minWidth: 220, textAlign: "left" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            {user.role === "admin" ? (
+                              <div style={{ flex: 1, color: COLORS.grayDark }}>
+                                {users.find((u) => u.email === user.manager_email)?.name ||
+                                  user.manager_email ||
+                                  "-"}
+                              </div>
+                            ) : (
+                              <select
+                                value={user.manager_email || ""}
+                                onChange={(e) => handleManagerChange(user.id, e.target.value)}
+                                style={{ ...inputStyle, width: 180 }}
+                              >
+                                <option value="">Yok</option>
+                                {[...users]
+                                  .filter((u) => u.email !== user.email)
+                                  .sort((a, b) => a.email.localeCompare(b.email))
+                                  .map((mgr) => (
+                                    <option key={mgr.email} value={mgr.email}>
+                                      {mgr.name || mgr.email}
+                                    </option>
+                                  ))}
+                              </select>
+                            )}
 
-                      {/* manager + blue check */}
-                      <td style={{ ...td, minWidth: 220, textAlign: "left" }}>
-  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-    {user.role === "admin" ? (
-      <div style={{ flex: 1, color: COLORS.grayDark }}>
-        {users.find((u) => u.email === user.manager_email)?.name || user.manager_email || "-"}
-      </div>
-    ) : (
-      <select
-        value={user.manager_email || ""}
-        onChange={(e) => handleManagerChange(user.id, e.target.value)}
-        style={{ ...inputStyle, width: 180 }}
-      >
-        <option value="">Yok</option>
-        {[...users]
-          .filter((u) => u.email !== user.email)
-          .sort((a, b) => a.email.localeCompare(b.email))
-          .map((mgr) => (
-            <option key={mgr.email} value={mgr.email}>
-              {mgr.name || mgr.email}
-            </option>
-          ))}
-      </select>
-    )}
+                            <button
+                              onClick={() => onSaveUserInfo(user)}
+                              disabled={savingUserId === user.id}
+                              title="Kullanıcı bilgilerini kaydet"
+                              style={{
+                                background: COLORS.blue,
+                                border: "none",
+                                borderRadius: 7,
+                                width: 34,
+                                height: 30,
+                                color: "#fff",
+                                fontWeight: 900,
+                                fontSize: 19,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                boxShadow: "0 1px 3px #cde5f470",
+                                cursor: savingUserId === user.id ? "not-allowed" : "pointer",
+                                opacity: savingUserId === user.id ? 0.6 : 1,
+                                flexShrink: 0,
+                              }}
+                            >
+                              ✔
+                            </button>
+                          </div>
+                        </td>
 
-    <button
-      onClick={() => onSaveUserInfo(user)}
-      disabled={savingUserId === user.id}
-      title="Kullanıcı bilgilerini kaydet"
-      style={{
-        background: COLORS.blue,
-        border: "none",
-        borderRadius: 7,
-        width: 34,
-        height: 30,
-        color: "#fff",
-        fontWeight: 900,
-        fontSize: 19,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        boxShadow: "0 1px 3px #cde5f470",
-        cursor: savingUserId === user.id ? "not-allowed" : "pointer",
-        opacity: savingUserId === user.id ? 0.6 : 1,
-        flexShrink: 0,
-      }}
-    >
-      ✔
-    </button>
-  </div>
-</td>
+                        <td
+                          style={{
+                            ...td,
+                            borderLeft: `2px solid ${COLORS.veryLightBlue}`,
+                            background: "#f8fbfd",
+                            width: 78,
+                          }}
+                        >
+                          <input
+                            type="number"
+                            value={remaining}
+                            onChange={(e) => onEdit(user.id, "remaining", e.target.value)}
+                            style={{ ...inputStyle, width: 60, fontSize: 15 }}
+                            min={0}
+                          />
+                        </td>
 
+                        <td style={{ ...td, background: "#f8fbfd", width: 64 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 6,
+                              alignItems: "center",
+                            }}
+                          >
+                            <button
+                              style={{
+                                background: COLORS.orange,
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: 7,
+                                width: 34,
+                                height: 30,
+                                fontSize: 17,
+                                padding: 0,
+                                cursor: savingUserId === user.id ? "not-allowed" : "pointer",
+                              }}
+                              disabled={savingUserId === user.id}
+                              onClick={() => onSaveClick(user)}
+                              title="Bakiyeyi Kaydet (E-posta gönderir)"
+                            >
+                              💾
+                            </button>
 
-                      {/* remaining */}
-                      <td style={{ ...td, borderLeft: `2px solid ${COLORS.veryLightBlue}`, background: "#f8fbfd", width: 78 }}>
-  <input
-    type="number"
-    value={remaining}
-    onChange={(e) => onEdit(user.id, "remaining", e.target.value)}
-    style={{ ...inputStyle, width: 60, fontSize: 15 }}
-    min={0}
-  />
-</td>
-<td style={{ ...td, background: "#f8fbfd", width: 64 }}>
-  <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
-    <button
-      style={{
-        background: COLORS.orange,
-        color: "#fff",
-        border: "none",
-        borderRadius: 7,
-        width: 34,
-        height: 30,
-        fontSize: 17,
-        padding: 0,
-        cursor: savingUserId === user.id ? "not-allowed" : "pointer",
-      }}
-      disabled={savingUserId === user.id}
-      onClick={() => onSaveClick(user)}
-      title="Bakiyeyi Kaydet (E-posta gönderir)"
-    >
-      💾
-    </button>
-
-    <button
-      onClick={() => archiveUser(user)}
-      disabled={archivingUserId === user.id}
-      title="Kullanıcıyı arşivle (pasifleştir)"
-      style={{
-        background: COLORS.gray,
-        color: "#fff",
-        border: "none",
-        borderRadius: 7,
-        width: 34,
-        height: 30,
-        fontSize: 16,
-        padding: 0,
-        cursor: archivingUserId === user.id ? "not-allowed" : "pointer",
-        opacity: archivingUserId === user.id ? 0.6 : 1,
-      }}
-    >
-      🗃
-    </button>
-  </div>
-</td>
-
-
-                    </tr>
-                  );
-                })}
+                            <button
+                              onClick={() => archiveUser(user)}
+                              disabled={archivingUserId === user.id}
+                              title="Kullanıcıyı arşivle (pasifleştir)"
+                              style={{
+                                background: COLORS.gray,
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: 7,
+                                width: 34,
+                                height: 30,
+                                fontSize: 16,
+                                padding: 0,
+                                cursor: archivingUserId === user.id ? "not-allowed" : "pointer",
+                                opacity: archivingUserId === user.id ? 0.6 : 1,
+                              }}
+                            >
+                              🗃
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
 
-          {/* Confirm modal */}
           {confirmingUser && (
             <div
               style={{
@@ -838,12 +1264,24 @@ export default function AdminPanel() {
                   border: `1px solid ${COLORS.veryLightBlue}`,
                 }}
               >
-                <h3 style={{ color: COLORS.orange, marginBottom: 8, fontWeight: 700, fontSize: 22 }}>Kaydı Onayla</h3>
+                <h3
+                  style={{
+                    color: COLORS.orange,
+                    marginBottom: 8,
+                    fontWeight: 700,
+                    fontSize: 22,
+                  }}
+                >
+                  Kaydı Onayla
+                </h3>
                 <div style={{ marginBottom: 16, color: COLORS.grayDark, fontWeight: 500 }}>
                   <div>
-                    <b>{confirmingUser.name || confirmingUser.email}</b> kullanıcısının bakiyesi güncellenecek.
+                    <b>{confirmingUser.name || confirmingUser.email}</b> kullanıcısının bakiyesi
+                    güncellenecek.
                   </div>
-                  <div style={{ fontSize: 15, margin: "10px 0 2px 0" }}>Bu işlem çalışana ve yöneticisine e-posta bildirimi gönderir.</div>
+                  <div style={{ fontSize: 15, margin: "10px 0 2px 0" }}>
+                    Bu işlem çalışana ve yöneticisine e-posta bildirimi gönderir.
+                  </div>
                 </div>
                 <div style={{ marginBottom: 18 }}>
                   <label htmlFor="admin-note" style={{ fontSize: 15, fontWeight: 500 }}>
@@ -904,11 +1342,490 @@ export default function AdminPanel() {
         </Section>
       )}
 
+      {/* BULK TAB */}
+      {active === "bulk" && (
+        <Section
+          title="Toplu İzin İşlemi"
+          right={
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <Pill tone="info">Önce Ön İzleme</Pill>
+              <Pill tone="warn">Bakiye yetersizse admin karar verir</Pill>
+            </div>
+          }
+        >
+          <div
+            style={{
+              border: `1px solid ${COLORS.veryLightBlue}`,
+              background: "#F8FBFD",
+              borderRadius: 14,
+              padding: 16,
+              marginBottom: 16,
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 12,
+                marginBottom: 14,
+              }}
+            >
+              <div>
+                <label style={{ display: "block", marginBottom: 6, fontWeight: 700, color: COLORS.grayDark }}>
+                  İzin Türü
+                </label>
+                <select
+                  value={bulkForm.leave_type_id}
+                  onChange={(e) => setBulkField("leave_type_id", e.target.value)}
+                  style={{ ...inputStyle, width: "100%", padding: "8px 10px" }}
+                >
+                  <option value="">Seçin</option>
+                  {leaveTypes.map((lt) => (
+                    <option key={lt.id} value={lt.id}>
+                      {lt.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: "block", marginBottom: 6, fontWeight: 700, color: COLORS.grayDark }}>
+                  Süre
+                </label>
+                <select
+                  value={bulkForm.duration_type}
+                  onChange={(e) => setBulkField("duration_type", e.target.value)}
+                  style={{ ...inputStyle, width: "100%", padding: "8px 10px" }}
+                >
+                  <option value="full">Tam Gün</option>
+                  <option value="half-am">Yarım Gün (Sabah)</option>
+                  <option value="half-pm">Yarım Gün (Öğleden Sonra)</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: "block", marginBottom: 6, fontWeight: 700, color: COLORS.grayDark }}>
+                  Başlangıç Tarihi
+                </label>
+                <input
+                  type="date"
+                  value={bulkForm.start_date}
+                  onChange={(e) => setBulkField("start_date", e.target.value)}
+                  style={{ ...inputStyle, width: "100%", padding: "8px 10px" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", marginBottom: 6, fontWeight: 700, color: COLORS.grayDark }}>
+                  Bitiş Tarihi
+                </label>
+                <input
+                  type="date"
+                  value={bulkForm.end_date}
+                  onChange={(e) => setBulkField("end_date", e.target.value)}
+                  style={{ ...inputStyle, width: "100%", padding: "8px 10px" }}
+                  disabled={isHalfDuration(bulkForm.duration_type)}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", marginBottom: 6, fontWeight: 700, color: COLORS.grayDark }}>
+                  Lokasyon
+                </label>
+                <input
+                  type="text"
+                  value={bulkForm.location}
+                  onChange={(e) => setBulkField("location", e.target.value)}
+                  placeholder="Company-wide leave"
+                  style={{ ...inputStyle, width: "100%", padding: "8px 10px" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", alignItems: "flex-end" }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontWeight: 600,
+                    color: COLORS.grayDark,
+                    paddingBottom: 8,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={bulkForm.send_email}
+                    onChange={(e) => setBulkField("send_email", e.target.checked)}
+                  />
+                  E-posta bildirimi gönder
+                </label>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", marginBottom: 6, fontWeight: 700, color: COLORS.grayDark }}>
+                Not
+              </label>
+              <textarea
+                value={bulkForm.note}
+                onChange={(e) => setBulkField("note", e.target.value)}
+                placeholder="Örn: Bayram öncesi şirket genel izin düşümü"
+                rows={3}
+                style={textAreaStyle}
+              />
+            </div>
+
+            <div
+              style={{
+                border: `1px solid ${COLORS.lightBlue}`,
+                background: "#fff",
+                borderRadius: 12,
+                padding: 14,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  marginBottom: 12,
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 800, color: COLORS.grayDark, marginBottom: 4 }}>
+                    Çalışan Seçimi
+                  </div>
+                  <div style={{ fontSize: 14, color: COLORS.gray }}>
+                    Seçilen çalışan sayısı: <b>{bulkForm.user_ids.length}</b>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <input
+                    type="text"
+                    value={bulkUserFilter}
+                    onChange={(e) => setBulkUserFilter(e.target.value)}
+                    placeholder="İsim veya e-posta ara"
+                    style={{ ...inputStyle, width: 220, padding: "8px 10px" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={selectAllFilteredBulkUsers}
+                    style={{
+                      background: COLORS.blue,
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "8px 12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Filtredekileri Seç
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearAllBulkUsers}
+                    style={{
+                      background: COLORS.gray,
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "8px 12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Temizle
+                  </button>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  maxHeight: 320,
+                  overflowY: "auto",
+                  border: `1px solid ${COLORS.veryLightBlue}`,
+                  borderRadius: 10,
+                  background: "#F9FBFC",
+                  padding: 8,
+                }}
+              >
+                {filteredBulkUsers.length === 0 ? (
+                  <div style={{ padding: 16, color: COLORS.gray }}>Kullanıcı bulunamadı.</div>
+                ) : (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                      gap: 8,
+                    }}
+                  >
+                    {filteredBulkUsers.map((user) => {
+                      const checked = bulkForm.user_ids.includes(user.id);
+                      return (
+                        <label
+                          key={user.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            border: checked ? `1px solid ${COLORS.orange}` : `1px solid ${COLORS.veryLightBlue}`,
+                            background: checked ? "#FFF7EC" : "#fff",
+                            borderRadius: 10,
+                            padding: "10px 12px",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleBulkUser(user.id)}
+                          />
+                          <div style={{ minWidth: 0 }}>
+                            <div
+                              style={{
+                                fontWeight: 700,
+                                color: COLORS.grayDark,
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {user.name || user.email}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 13,
+                                color: COLORS.gray,
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {user.email}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                justifyContent: "flex-end",
+                flexWrap: "wrap",
+                marginTop: 16,
+              }}
+            >
+              <button
+                type="button"
+                onClick={resetBulkPreview}
+                style={{
+                  background: "#fff",
+                  color: COLORS.grayDark,
+                  border: `1px solid ${COLORS.lightBlue}`,
+                  borderRadius: 8,
+                  padding: "9px 14px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Ön İzlemeyi Temizle
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBulkPreview}
+                disabled={bulkLoadingPreview}
+                style={{
+                  background: COLORS.orange,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "9px 16px",
+                  fontWeight: 800,
+                  cursor: bulkLoadingPreview ? "not-allowed" : "pointer",
+                  opacity: bulkLoadingPreview ? 0.7 : 1,
+                }}
+              >
+                {bulkLoadingPreview ? "Ön İzleme Alınıyor…" : "Ön İzleme"}
+              </button>
+            </div>
+          </div>
+
+          {selectedBulkUsers.length > 0 && (
+            <div
+              style={{
+                border: `1px solid ${COLORS.veryLightBlue}`,
+                background: "#fff",
+                borderRadius: 14,
+                padding: 14,
+                marginBottom: 16,
+              }}
+            >
+              <div style={{ fontWeight: 800, color: COLORS.grayDark, marginBottom: 8 }}>
+                Seçili İşlem Özeti
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                <Pill tone="info">{selectedBulkUsers.length} çalışan</Pill>
+                <Pill tone="info">
+                  {leaveTypes.find((lt) => lt.id === bulkForm.leave_type_id)?.name || "İzin Türü"}
+                </Pill>
+                <Pill tone="info">{getDurationLabel(bulkForm.duration_type)}</Pill>
+                <Pill tone="info">
+                  {formatDateTR(bulkForm.start_date)} - {formatDateTR(bulkForm.end_date)}
+                </Pill>
+              </div>
+            </div>
+          )}
+
+          {bulkPreview && (
+            <div
+              style={{
+                border: `1px solid ${COLORS.lightBlue}`,
+                background: "#F8FBFD",
+                borderRadius: 14,
+                padding: 16,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 10,
+                  marginBottom: 12,
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 800, color: COLORS.grayDark, marginBottom: 4 }}>
+                    Ön İzleme Sonucu
+                  </div>
+                  <div style={{ fontSize: 14, color: COLORS.gray }}>
+                    Uygulamadan önce durum kontrolü
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Pill tone="ok">Hazır: {bulkPreview?.summary?.ready ?? 0}</Pill>
+                  <Pill tone="warn">
+                    Bakiye Yetersiz: {bulkPreview?.summary?.insufficient_balance ?? 0}
+                  </Pill>
+                  <Pill tone="error">Çakışma: {bulkPreview?.summary?.overlap ?? 0}</Pill>
+                  <Pill tone="error">Pasif: {bulkPreview?.summary?.inactive ?? 0}</Pill>
+                </div>
+              </div>
+
+              <div style={{ overflowX: "auto", marginBottom: 14 }}>
+                <table
+                  style={{
+                    width: "100%",
+                    borderSpacing: 0,
+                    background: "#fff",
+                    border: `1px solid ${COLORS.veryLightBlue}`,
+                    borderRadius: 10,
+                    overflow: "hidden",
+                    minWidth: 760,
+                  }}
+                >
+                  <thead>
+                    <tr style={{ background: COLORS.veryLightBlue }}>
+                      <th style={th}>Çalışan</th>
+                      <th style={th}>E-posta</th>
+                      <th style={th}>Durum</th>
+                      <th style={th}>Kalan</th>
+                      <th style={th}>Gerekli</th>
+                      <th style={th}>Not / Sebep</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(bulkPreview?.results || []).map((row, idx) => (
+                      <tr key={`${row.user_id || row.email || "row"}_${idx}`}>
+                        <td style={{ ...td, textAlign: "left" }}>{row.name || "-"}</td>
+                        <td style={{ ...td, textAlign: "left" }}>{row.email || "-"}</td>
+                        <td style={td}>
+                          <Pill tone={getStatusTone(row.status)}>{getStatusLabel(row.status)}</Pill>
+                        </td>
+                        <td style={td}>{row.remaining ?? "-"}</td>
+                        <td style={td}>{row.needed ?? row.days ?? "-"}</td>
+                        <td style={{ ...td, textAlign: "left" }}>
+                          {row.reason || row.note || "-"}
+                        </td>
+                      </tr>
+                    ))}
+                    {(bulkPreview?.results || []).length === 0 && (
+                      <tr>
+                        <td colSpan={6} style={{ padding: 12, color: COLORS.gray }}>
+                          Sonuç bulunamadı.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  justifyContent: "flex-end",
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={handleBulkApply}
+                  disabled={bulkApplying}
+                  style={{
+                    background: COLORS.orange,
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "10px 16px",
+                    fontWeight: 800,
+                    cursor: bulkApplying ? "not-allowed" : "pointer",
+                    opacity: bulkApplying ? 0.7 : 1,
+                  }}
+                >
+                  {bulkApplying ? "Uygulanıyor…" : "İşlemi Uygula"}
+                </button>
+              </div>
+            </div>
+          )}
+        </Section>
+      )}
+
       {/* SETTINGS TAB */}
       {active === "settings" && (
         <Section title="Ayarlar">
-          <div style={{ margin: "12px 0", padding: 12, background: "#F8FBFD", borderRadius: 10, border: `1px solid ${COLORS.veryLightBlue}` }}>
-            <label style={{ fontSize: 17, fontWeight: 600, display: "flex", alignItems: "center", gap: 16 }}>
+          <div
+            style={{
+              margin: "12px 0",
+              padding: 12,
+              background: "#F8FBFD",
+              borderRadius: 10,
+              border: `1px solid ${COLORS.veryLightBlue}`,
+            }}
+          >
+            <label
+              style={{
+                fontSize: 17,
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                gap: 16,
+                flexWrap: "wrap",
+              }}
+            >
               <span>Kullanıcılar geçmiş tarihler için izin talep edebilsin (retroaktif izin)</span>
               <div
                 onClick={handleToggleRetroactive}
@@ -921,7 +1838,9 @@ export default function AdminPanel() {
                   cursor: "pointer",
                   transition: "background 0.25s",
                   boxShadow: allowRetroactiveLeave ? "0 0 6px #E0653A44" : "0 0 6px #A8D2F2",
-                  border: allowRetroactiveLeave ? `1.5px solid ${COLORS.red}` : `1.5px solid ${COLORS.blue}`,
+                  border: allowRetroactiveLeave
+                    ? `1.5px solid ${COLORS.red}`
+                    : `1.5px solid ${COLORS.blue}`,
                 }}
                 tabIndex={0}
                 role="button"
@@ -945,7 +1864,15 @@ export default function AdminPanel() {
                   }}
                 />
               </div>
-              <span style={{ fontWeight: 700, color: allowRetroactiveLeave ? COLORS.red : COLORS.blue, minWidth: 68 }}>{allowRetroactiveLeave ? "Açık" : "Kapalı"}</span>
+              <span
+                style={{
+                  fontWeight: 700,
+                  color: allowRetroactiveLeave ? COLORS.red : COLORS.blue,
+                  minWidth: 68,
+                }}
+              >
+                {allowRetroactiveLeave ? "Açık" : "Kapalı"}
+              </span>
             </label>
           </div>
         </Section>
@@ -954,13 +1881,27 @@ export default function AdminPanel() {
       {/* HOLIDAYS TAB */}
       {active === "holidays" && (
         <Section title="Resmi Tatil Yönetimi" right={null}>
-          <form onSubmit={handleAddHoliday} style={{ marginBottom: 18, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <form
+            onSubmit={handleAddHoliday}
+            style={{
+              marginBottom: 18,
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
             <input
               type="date"
               required
               value={newHolidayDate}
               onChange={(e) => setNewHolidayDate(e.target.value)}
-              style={{ fontSize: 15, padding: 5, borderRadius: 6, border: `1px solid ${COLORS.veryLightBlue}` }}
+              style={{
+                fontSize: 15,
+                padding: 5,
+                borderRadius: 6,
+                border: `1px solid ${COLORS.veryLightBlue}`,
+              }}
             />
             <input
               type="text"
@@ -968,14 +1909,32 @@ export default function AdminPanel() {
               placeholder="Tatil Adı"
               value={newHolidayName}
               onChange={(e) => setNewHolidayName(e.target.value)}
-              style={{ fontSize: 15, padding: 5, borderRadius: 6, border: `1px solid ${COLORS.veryLightBlue}`, minWidth: 200 }}
+              style={{
+                fontSize: 15,
+                padding: 5,
+                borderRadius: 6,
+                border: `1px solid ${COLORS.veryLightBlue}`,
+                minWidth: 200,
+              }}
             />
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15 }}>
-              <input type="checkbox" checked={isHalfDay} onChange={(e) => setIsHalfDay(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={isHalfDay}
+                onChange={(e) => setIsHalfDay(e.target.checked)}
+              />
               Yarım Gün
             </label>
             {isHalfDay && (
-              <select value={half} onChange={(e) => setHalf(e.target.value)} style={{ fontSize: 15, borderRadius: 6, border: `1px solid ${COLORS.veryLightBlue}` }}>
+              <select
+                value={half}
+                onChange={(e) => setHalf(e.target.value)}
+                style={{
+                  fontSize: 15,
+                  borderRadius: 6,
+                  border: `1px solid ${COLORS.veryLightBlue}`,
+                }}
+              >
                 <option value="morning">Sabah</option>
                 <option value="afternoon">Öğleden Sonra</option>
               </select>
@@ -998,7 +1957,15 @@ export default function AdminPanel() {
           </form>
 
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", background: "#F8FBFD", borderRadius: 10, fontSize: 16, border: `1px solid ${COLORS.veryLightBlue}` }}>
+            <table
+              style={{
+                width: "100%",
+                background: "#F8FBFD",
+                borderRadius: 10,
+                fontSize: 16,
+                border: `1px solid ${COLORS.veryLightBlue}`,
+              }}
+            >
               <thead>
                 <tr style={{ background: COLORS.veryLightBlue }}>
                   <th style={{ padding: 10 }}>Tarih</th>
@@ -1012,13 +1979,20 @@ export default function AdminPanel() {
                   <tr key={h.id || i}>
                     <td style={{ textAlign: "center", padding: 8 }}>{formatDateTR(h.date)}</td>
                     <td style={{ padding: 8 }}>{h.name}</td>
-                    <td style={{ padding: 8 }}>{h.is_half_day ? (h.half === "morning" ? "Sabah" : "Öğleden Sonra") : "Tam"}</td>
+                    <td style={{ padding: 8 }}>
+                      {h.is_half_day ? (h.half === "morning" ? "Sabah" : "Öğleden Sonra") : "Tam"}
+                    </td>
                     <td style={{ textAlign: "center" }}>
                       <button
                         onClick={() => onDeleteHoliday(h)}
                         disabled={deletingHolidayId === h.id}
                         title="Sil"
-                        style={{ background: "none", border: "none", fontSize: 20, cursor: deletingHolidayId === h.id ? "not-allowed" : "pointer" }}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          fontSize: 20,
+                          cursor: deletingHolidayId === h.id ? "not-allowed" : "pointer",
+                        }}
                       >
                         {deletingHolidayId === h.id ? "…" : "🗑"}
                       </button>
@@ -1027,7 +2001,14 @@ export default function AdminPanel() {
                 ))}
                 {holidays.length === 0 && (
                   <tr>
-                    <td colSpan={4} style={{ padding: 12, color: COLORS.gray, fontFamily: "Urbanist, system-ui" }}>
+                    <td
+                      colSpan={4}
+                      style={{
+                        padding: 12,
+                        color: COLORS.gray,
+                        fontFamily: "Urbanist, system-ui",
+                      }}
+                    >
                       Kayıtlı tatil bulunmuyor.
                     </td>
                   </tr>

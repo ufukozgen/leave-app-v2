@@ -2,6 +2,20 @@
 
 export const RELEASES = [
   {
+  version: "v2.4.2",
+  date: "2026-03-30",
+  notes: [
+    "🏢 Admin paneline toplu izin işleme sekmesi eklendi",
+    "👥 Seçili çalışanlara toplu tam gün / yarım gün izin düşümü yapılabiliyor",
+    "🔍 Toplu işlem öncesi ön izleme ekranı eklendi (çakışma, bakiye, pasif kullanıcı kontrolü)",
+    "⚖️ Yetersiz bakiye durumunda admin artık düş veya atla kararı verebiliyor",
+    "🧮 bulk-company-leave Edge Function eklendi ve calcLeaveDays ile uyumlu hale getirildi",
+    "🔐 Toplu işlem akışında admin auth + service-role DB erişimi ayrıştırıldı",
+    "↩️ Manager/Employee konsolunda reverse işlemini engelleyen callEdgeFunction hatası giderildi"
+  ],
+},
+  
+  {
   version: "v2.4.1",
   date: "2026-03-03",
   notes: [

@@ -48,7 +48,38 @@ const EDGE_ENDPOINTS = {
   deduct: `${EDGE_URL}/deduct-leave`,
   reverse: `${EDGE_URL}/reverse-leave`
 };
+async function callEdgeFunction(url, payload) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
 
+  if (!token) {
+    toast.error("Oturum doğrulanamadı");
+    return { success: false };
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(data?.error || "Request failed");
+    }
+
+    return { success: true, data };
+  } catch (err) {
+    console.error("Edge call error:", err);
+    toast.error(err.message || "Bir hata oluştu");
+    return { success: false };
+  }
+}
 function formatDateTR(iso) {
   if (!iso) return "";
   const date = typeof iso === "string" ? new Date(iso) : iso;

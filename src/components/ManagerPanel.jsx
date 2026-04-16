@@ -204,10 +204,16 @@ async function handleApprove(req) {
 }
 
 async function handleReject(req) {
-  const reason = prompt("Reddetme gerekçesi (görünecek):");
-  if (!reason) return;
+  const reason = prompt("Reddetme gerekçesi (çalışana e-postada görünecek):");
+  if (!reason || !reason.trim()) return;
+
   setProcessing({ id: req.id, type: "reject" });
-  const { success } = await callEdgeFunction(EDGE_ENDPOINTS.reject, { request_id: req.id, reason });
+
+  const { success } = await callEdgeFunction(EDGE_ENDPOINTS.reject, {
+    request_id: req.id,
+    rejection_reason: reason.trim(),
+  });
+
   if (success) {
     setMessage("Talep reddedildi.");
     toast.success("Talep reddedildi!");
@@ -216,6 +222,7 @@ async function handleReject(req) {
   } else {
     toast.error("Talep reddedilemedi!");
   }
+
   setProcessing(null);
 }
 

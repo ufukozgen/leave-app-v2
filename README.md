@@ -49,16 +49,7 @@ Test altyapısı yoktur; doğrulama canlı Supabase projesi üzerinde elle yapı
 
 ## Ortam Değişkenleri
 
-Supabase projesinde tanımlanması gereken secretlar:
-
-```
-SUPABASE_URL
-SUPABASE_SERVICE_ROLE_KEY
-ADMIN_SECRET
-AZURE_CLIENT_ID / AZURE_TENANT_ID
-GRAPH_CLIENT_ID / GRAPH_CLIENT_SECRET
-GITHUB_TOKEN / GITHUB_REPO
-```
+Gerekli secretlar Supabase Dashboard → Settings → Edge Functions bölümünde tanımlanır. Supabase auth ayarları için Azure AD uygulama kaydı, e-posta ve OOO işlevleri için Microsoft Graph uygulama izinleri gerekmektedir.
 
 ## Sürüm Geçmişi
 

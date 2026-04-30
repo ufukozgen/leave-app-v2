@@ -1,12 +1,65 @@
-# React + Vite
+# Leave App v2
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Terralab çalışanları için izin yönetim sistemi. Çalışanlar izin talebinde bulunabilir; yöneticiler onaylayabilir, reddedebilir veya bakiye düşümü yapabilir; adminler tüm sistemi yönetebilir.
 
-Currently, two official plugins are available:
+## Teknoloji
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Frontend:** React 19 + Vite → Vercel
+- **Backend:** Supabase (PostgreSQL, Auth, Edge Functions)
+- **Kimlik doğrulama:** Azure OAuth (Microsoft SSO)
+- **E-posta / OOO:** Microsoft Graph API
 
-## Expanding the ESLint configuration
+## Geliştirme
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm run dev        # Geliştirme sunucusu (localhost:5173)
+npm run build      # Production build
+npm run lint       # ESLint kontrolü
+npm run preview    # Production build önizleme
+```
+
+Edge function deploy:
+```bash
+supabase functions deploy <function-name>
+```
+
+Test altyapısı yoktur; doğrulama canlı Supabase projesi üzerinde elle yapılır.
+
+## Roller
+
+| Rol | Yetkiler |
+|---|---|
+| `user` | Kendi izin talebini oluşturabilir ve iptal edebilir |
+| `manager` | Ekibinin taleplerini onaylayabilir, reddedebilir, bakiye düşümü yapabilir |
+| `admin` | Tüm işlemler + rol/yönetici atama, bakiye yedekleme, toplu izin işleme |
+
+## İzin Durumları
+
+`Pending` → `Approved` → `Deducted` (veya `Rejected` / `Cancelled`)
+
+## Öne Çıkan Özellikler
+
+- Yarım gün izin desteği (sabah / öğleden sonra)
+- Resmi tatil farkındalıklı gün hesaplama
+- Out-of-Office otomatik aktivasyonu (onay ile)
+- Aylık bakiye yedekleme (GitHub Actions + manuel tetikleme)
+- Aylık kullanım raporu (per-diem mutabakatı için)
+- Toplu şirket izni işleme
+- Çalışan arşivleme
+
+## Ortam Değişkenleri
+
+Supabase projesinde tanımlanması gereken secretlar:
+
+```
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+ADMIN_SECRET
+AZURE_CLIENT_ID / AZURE_TENANT_ID
+GRAPH_CLIENT_ID / GRAPH_CLIENT_SECRET
+GITHUB_TOKEN / GITHUB_REPO
+```
+
+## Sürüm Geçmişi
+
+Uygulama içi sürüm notları `src/version.js` dosyasında tutulmaktadır. Her sürüm için otomatik olarak GitHub etiketi (tag) oluşturulur.

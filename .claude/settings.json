@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit*)",
+            "command": "bash .claude/scripts/tag-version.sh 2>/dev/null || true",
+            "statusMessage": "Checking for version tag…"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -2,6 +2,17 @@
 
 export const RELEASES = [
   {
+    version: "v2.5.1",
+    date: "2026-04-30",
+    notes: [
+      "📊 Yedekleme sekmesine Aylık Kullanım bölümü eklendi",
+      "✅ Seçili ay içinde başlayan onaylı ve düşülmüş izinler kullanıcı bazında listeleniyor",
+      "📤 Aylık kullanım CSV olarak dışa aktarılabiliyor (per-diem mutabakatı için)",
+      "🗂️ Yedekleme sekmeleri (Bakiye Yedekleri, Aylık Kullanım, Loglar) daraltılabilir bölümlere alındı",
+    ],
+  },
+
+  {
     version: "v2.5.0",
     date: "2026-04-30",
     notes: [

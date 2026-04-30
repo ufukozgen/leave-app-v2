@@ -135,27 +135,28 @@ return (
   <div
     className="vacation-card"
     style={{
-      padding: "32px 30px 24px 30px",         // bigger padding
-      borderRadius: 26,                        // more rounded
+      padding: "32px 30px 24px 30px",
+      borderRadius: 26,
       background: "#fff",
-      boxShadow: "0 4px 22px #cde5f433",      // bigger, softer shadow
-      minWidth: 400,                          // increased min/max width
+      boxShadow: "0 4px 22px #cde5f433",
       maxWidth: 480,
       margin: "0 auto",
       border: `2px solid ${COLORS.lightBlue}`,
     }}
   >
     <div
+      className="vacation-card-body"
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 24,                               // more gap
-        minHeight: 96,                         // taller
+        gap: 24,
+        minHeight: 96,
       }}
     >
       {/* Profile Photo */}
       {profilePhoto ? (
         <img
+          className="vacation-avatar"
           src={profilePhoto}
           alt="Profil Fotoğrafı"
           style={{
@@ -171,6 +172,7 @@ return (
         />
       ) : (
         <div
+          className="vacation-avatar"
           style={{
             width: 78,
             height: 78,
@@ -196,7 +198,7 @@ return (
       )}
 
       {/* Info */}
-      <div style={{ marginBottom: 2 }}>
+      <div className="vacation-info-col" style={{ marginBottom: 2 }}>
   {showGreeting && (
     <>
       <div style={{
@@ -273,6 +275,7 @@ return (
           Kalan
         </div>
         <div
+          className="vacation-remaining"
           style={{
             background: COLORS.orange,
             color: "#fff",

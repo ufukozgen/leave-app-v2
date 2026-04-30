@@ -229,6 +229,8 @@ export default function AdminPanel() {
   const [refreshingUserId, setRefreshingUserId] = useState(null);
   const [recentlyRefreshedUserId, setRecentlyRefreshedUserId] = useState(null);
   const [archivingUserId, setArchivingUserId] = useState(null);
+  const [mobileEditUserId, setMobileEditUserId] = useState(null);
+  const mobileEditUser = mobileEditUserId ? (users.find(u => u.id === mobileEditUserId) ?? null) : null;
 
   // --- Bulk leave state ---
   const [bulkUserFilter, setBulkUserFilter] = useState("");
@@ -610,6 +612,7 @@ export default function AdminPanel() {
     ]);
 
     setUsers((prev) => prev.filter((u) => u.id !== user.id));
+    setMobileEditUserId(null);
 
     toast.success("Kullanıcı arşivlendi.");
     setMessage("Kullanıcı arşivlendi.");
@@ -891,6 +894,7 @@ export default function AdminPanel() {
 
   return (
     <div
+      className="admin-panel-wrapper"
       style={{
         maxWidth: 1100,
         margin: "2em auto",
@@ -932,6 +936,7 @@ export default function AdminPanel() {
       <div
         role="tablist"
         aria-label="Admin Tabs"
+        className="admin-tab-bar"
         style={{
           display: "flex",
           gap: 8,
@@ -971,6 +976,31 @@ export default function AdminPanel() {
       {/* USERS TAB */}
       {active === "users" && (
         <Section title="Kullanıcılar & Bakiyeler">
+
+          {/* ── Mobile list (hidden on desktop) ── */}
+          <div className="admin-users-mobile-list">
+            {[...users].sort((a, b) => a.email.localeCompare(b.email)).map(user => (
+              <button
+                key={user.id}
+                className="admin-user-list-item"
+                onClick={() => setMobileEditUserId(user.id)}
+              >
+                <div className="admin-user-list-avatar">
+                  {(user.initials || (user.name || user.email).slice(0, 2)).toUpperCase()}
+                </div>
+                <div className="admin-user-list-info">
+                  <div className="admin-user-list-name">{user.name || user.email}</div>
+                  <div className="admin-user-list-email">{user.email.replace("@terralab.com.tr", "")}@…</div>
+                </div>
+                <Pill tone={user.role === "admin" ? "ok" : user.role === "manager" ? "info" : undefined}>
+                  {user.role === "admin" ? "Admin" : user.role === "manager" ? "Yönetici" : "Kullanıcı"}
+                </Pill>
+              </button>
+            ))}
+          </div>
+
+          {/* ── Desktop table (hidden on mobile) ── */}
+          <div className="admin-users-table-wrapper">
           <div style={{ overflowX: "auto" }}>
             <table
               style={{
@@ -1238,6 +1268,131 @@ export default function AdminPanel() {
               </tbody>
             </table>
           </div>
+          </div>{/* end admin-users-table-wrapper */}
+
+          {/* ── Mobile edit bottom-sheet modal ── */}
+          {mobileEditUser && (
+            <div className="admin-mobile-overlay" onClick={() => setMobileEditUserId(null)}>
+              <div className="admin-mobile-sheet" onClick={e => e.stopPropagation()}>
+
+                {/* Header */}
+                <div className="admin-mobile-sheet-header">
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div className="admin-user-list-avatar" style={{ width: 44, height: 44, fontSize: 17 }}>
+                      {(mobileEditUser.initials || (mobileEditUser.name || mobileEditUser.email).slice(0, 2)).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: COLORS.grayDark }}>{mobileEditUser.name || mobileEditUser.email}</div>
+                      <div style={{ fontSize: 13, color: COLORS.gray }}>{mobileEditUser.email}</div>
+                    </div>
+                  </div>
+                  <button className="admin-mobile-close" onClick={() => setMobileEditUserId(null)}>✕</button>
+                </div>
+
+                {/* User info fields */}
+                <div className="admin-mobile-section-label">Kullanıcı Bilgileri</div>
+                <div className="admin-mobile-field">
+                  <label>Ad Soyad</label>
+                  <input
+                    type="text"
+                    value={editing[`${mobileEditUser.id}_name`] ?? mobileEditUser.name ?? ""}
+                    onChange={e => onEdit(mobileEditUser.id, "name", e.target.value)}
+                    maxLength={60}
+                    autoComplete="off"
+                    className="admin-mobile-input"
+                  />
+                </div>
+                <div className="admin-mobile-field">
+                  <label>Baş Harfler</label>
+                  <input
+                    type="text"
+                    value={normalizeInitialsTR(editing[`${mobileEditUser.id}_initials`] ?? mobileEditUser.initials ?? "")}
+                    onChange={e => onEdit(mobileEditUser.id, "initials", normalizeInitialsTR(e.target.value))}
+                    maxLength={3}
+                    autoComplete="off"
+                    className="admin-mobile-input"
+                    style={{ maxWidth: 80 }}
+                  />
+                </div>
+                <button
+                  className="admin-mobile-btn-primary"
+                  onClick={() => onSaveUserInfo(mobileEditUser)}
+                  disabled={savingUserId === mobileEditUser.id}
+                >
+                  {savingUserId === mobileEditUser.id ? "Kaydediliyor…" : "✔ Bilgileri Kaydet"}
+                </button>
+
+                {/* Role & manager */}
+                <div className="admin-mobile-section-label">Rol & Yönetici</div>
+                {mobileEditUser.role === "admin" ? (
+                  <div style={{ marginBottom: 12 }}><Pill tone="ok">Admin</Pill></div>
+                ) : (
+                  <div className="admin-mobile-field">
+                    <label>Rol</label>
+                    <select
+                      value={mobileEditUser.role}
+                      onChange={e => handleRoleChange(mobileEditUser.id, e.target.value)}
+                      className="admin-mobile-input"
+                    >
+                      <option value="user">Kullanıcı</option>
+                      <option value="manager">Yönetici</option>
+                    </select>
+                  </div>
+                )}
+                {mobileEditUser.role !== "admin" && (
+                  <div className="admin-mobile-field">
+                    <label>Yönetici</label>
+                    <select
+                      value={mobileEditUser.manager_email || ""}
+                      onChange={e => handleManagerChange(mobileEditUser.id, e.target.value)}
+                      className="admin-mobile-input"
+                    >
+                      <option value="">Yok</option>
+                      {[...users]
+                        .filter(u => u.email !== mobileEditUser.email)
+                        .sort((a, b) => a.email.localeCompare(b.email))
+                        .map(mgr => (
+                          <option key={mgr.email} value={mgr.email}>{mgr.name || mgr.email}</option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Balance */}
+                <div className="admin-mobile-section-label">İzin Bakiyesi</div>
+                <div className="admin-mobile-field">
+                  <label>Kalan (gün)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={editing[`${mobileEditUser.id}_remaining`] ?? getBal(mobileEditUser.id).remaining ?? ""}
+                    onChange={e => onEdit(mobileEditUser.id, "remaining", e.target.value)}
+                    className="admin-mobile-input"
+                    style={{ maxWidth: 100 }}
+                  />
+                </div>
+                <button
+                  className="admin-mobile-btn-primary"
+                  onClick={() => onSaveClick(mobileEditUser)}
+                  disabled={savingUserId === mobileEditUser.id}
+                >
+                  💾 Bakiyeyi Kaydet
+                </button>
+
+                {/* Archive */}
+                <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${COLORS.veryLightBlue}` }}>
+                  <button
+                    className="admin-mobile-btn-danger"
+                    onClick={() => archiveUser(mobileEditUser)}
+                    disabled={archivingUserId === mobileEditUser.id}
+                  >
+                    {archivingUserId === mobileEditUser.id ? "Arşivleniyor…" : "🗃 Kullanıcıyı Arşivle"}
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          )}
 
           {confirmingUser && (
             <div
@@ -1260,7 +1415,8 @@ export default function AdminPanel() {
                   borderRadius: 12,
                   padding: "32px 28px",
                   boxShadow: "0 4px 28px #a8d2f285",
-                  minWidth: 360,
+                  width: "90%",
+                  maxWidth: 440,
                   border: `1px solid ${COLORS.veryLightBlue}`,
                 }}
               >

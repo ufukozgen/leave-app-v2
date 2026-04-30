@@ -359,7 +359,7 @@ function handleSort(field) {
   return (
 <div className="main-content" style={{ minHeight: 580 }}>
   {/* Centered tab bar, not animated */}
-  <div style={{
+  <div className="manager-tab-nav" style={{
     display: "flex",
     justifyContent: "center",
     gap: 12,

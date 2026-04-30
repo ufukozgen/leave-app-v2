@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useUser } from "./UserContext";
-import { supabase } from "../supabaseClient"; // adjust path as needed
+import { supabase } from "../supabaseClient";
 
 export function FeedbackFooter() {
   const { dbUser } = useUser();
@@ -9,6 +9,25 @@ export function FeedbackFooter() {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState("");
   const [error, setError] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const timerRef = useRef(null);
+
+  function handleFabClick() {
+    const isMobile = window.matchMedia("(max-width: 768px)").matches;
+    if (!isMobile) {
+      setOpen(true);
+      return;
+    }
+    if (expanded) {
+      clearTimeout(timerRef.current);
+      setExpanded(false);
+      setOpen(true);
+    } else {
+      setExpanded(true);
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setExpanded(false), 2000);
+    }
+  }
 
   async function handleSend(e) {
     e.preventDefault();
@@ -20,12 +39,10 @@ export function FeedbackFooter() {
     setSending(true);
     setResult("");
     try {
-      // Get current user's session token
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       if (!token) throw new Error("Oturum bulunamadı, lütfen tekrar giriş yapın.");
 
-      // Call Supabase Edge Function
       const response = await fetch("https://sxinuiwawpruwzxfcgpc.functions.supabase.co/send-feedback", {
         method: "POST",
         headers: {
@@ -60,27 +77,16 @@ export function FeedbackFooter() {
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
-        style={{
-          position: "fixed",
-          right: 30,
-          bottom: 30,
-          zIndex: 1000,
-          background: "#F39200",
-          color: "#fff",
-          border: "none",
-          borderRadius: 32,
-          padding: "12px 28px",
-          fontWeight: 700,
-          fontFamily: "Urbanist, Arial, sans-serif",
-          fontSize: 18,
-          boxShadow: "0 4px 16px #A8D2F255",
-          cursor: "pointer",
-          transition: "background 0.2s",
-          opacity: 0.96
-        }}
+        className={`feedback-fab${expanded ? " feedback-fab-expanded" : ""}`}
+        onClick={handleFabClick}
+        aria-label="Geri Bildirim"
       >
-        Geri Bildirim
+        <span className="feedback-fab-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000000" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </span>
+        <span className="feedback-fab-label">Geri Bildirim</span>
       </button>
 
       {open && (
@@ -128,7 +134,8 @@ export function FeedbackFooter() {
                     fontSize: 16,
                     fontFamily: "Urbanist, Arial, sans-serif",
                     resize: "vertical",
-                    background: "#f8f8f8"
+                    background: "#f8f8f8",
+                    boxSizing: "border-box",
                   }}
                   disabled={sending}
                   required
@@ -184,8 +191,8 @@ export function FeedbackFooter() {
             </form>
             <style>{`
               @keyframes spin {
-                0% { transform: rotate(0deg);}
-                100% { transform: rotate(360deg);}
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
               }
             `}</style>
             <button

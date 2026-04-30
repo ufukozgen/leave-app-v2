@@ -68,7 +68,7 @@ if (!isLoggedIn) {
           borderRadius: 22,
           boxShadow: "0 0 32px #cde5f4",
           textAlign: "center",
-          minWidth: 380,
+          width: "90%",
           maxWidth: 420
         }}
       >
@@ -224,10 +224,11 @@ if (!loading && dbUser && dbUser.is_active === false) {
       <Toaster position="top-center" />
 
       <div
+        className="app-wrapper"
         style={{
           minHeight: 800,
           maxWidth: 1040,
-          width: 1040,
+          width: "100%",
           margin: "32px auto",
           padding: "0 0 36px 0",
           background: "#fff",
@@ -237,17 +238,18 @@ if (!loading && dbUser && dbUser.is_active === false) {
           position: "relative",
           transition: "min-height 0.3s",
           display: "flex",
-          flexDirection: "column"
+          flexDirection: "column",
+          boxSizing: "border-box",
         }}
       >
-        <div style={{
+        <div className="app-header" style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           padding: "18px 32px 0 32px",
           fontFamily: "'Urbanist', Arial, sans-serif"
         }}>
-          <div style={{ fontWeight: 900, fontSize: 32, letterSpacing: 1, color: "#F39200", marginBottom: 20 }}>
+          <div className="app-title" style={{ fontWeight: 900, fontSize: 32, letterSpacing: 1, color: "#F39200", marginBottom: 20 }}>
             🏖️ İzin Uygulaması v2
           </div>
           {/* LOGIN/LOGOUT BUTTONS */}
@@ -299,7 +301,7 @@ if (!loading && dbUser && dbUser.is_active === false) {
 
         <VacationBalanceCard userId={dbUser?.id} launchDate="01.07.2025" />
 
-        <nav style={{
+        <nav className="tab-nav" style={{
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
@@ -345,6 +347,7 @@ if (!loading && dbUser && dbUser.is_active === false) {
           >
             <div
               ref={nodeRef}
+              className="tab-content"
               style={{
                 padding: "18px 28px",
                 width: "100%",

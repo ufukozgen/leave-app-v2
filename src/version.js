@@ -2,6 +2,17 @@
 
 export const RELEASES = [
   {
+    version: "v2.5.0",
+    date: "2026-04-30",
+    notes: [
+      "📱 Mobil uyumlu arayüz: tüm ekranlar 375px genişlikte düzgün görüntüleniyor",
+      "🗂️ Yönetici ve Admin sekme çubukları yatay kaydırılabilir hale getirildi",
+      "👤 Admin paneli Kullanıcılar sekmesi mobilde dokunmatik liste + alt sayfa (bottom sheet) olarak açılıyor",
+      "💬 Geri Bildirim butonu mobilde küçük ikon olarak gösteriliyor, dokunuşta genişleyerek açılıyor",
+    ],
+  },
+
+  {
   version: "v2.4.2",
   date: "2026-03-30",
   notes: [

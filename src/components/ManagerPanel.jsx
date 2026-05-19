@@ -402,12 +402,13 @@ function handleSort(field) {
         ) : requests.length === 0 ? (
           <div>Gösterilecek talep yok.</div>
         ) : (
+          <div style={{ overflowX: "auto", width: "100%" }}>
           <table style={{
             width: "100%",
             fontSize: 15,
             borderSpacing: 0,
-            tableLayout: "fixed",
-            minWidth: 640,
+            tableLayout: "auto",
+            minWidth: 700,
             background: "#fff"
           }}>
             <thead>
@@ -654,6 +655,7 @@ function handleSort(field) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </CSSTransition>
@@ -671,7 +673,8 @@ const th = {
   fontWeight: 700,
   fontSize: 16,
   background: "#F39200",
-  color: "#fff"
+  color: "#fff",
+  whiteSpace: "nowrap",
 };
 const td = {
   padding: "8px 6px",

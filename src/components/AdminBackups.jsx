@@ -331,51 +331,53 @@ export default function AdminBackups() {
           </div>
         }
       >
-        <div style={{ background: "#fff", border: `1px solid ${COLORS.lightBlue}`, borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 1fr 160px 140px", gap: 0, background: COLORS.veryLightBlue, padding: "10px 12px", fontWeight: 600, fontFamily: "Urbanist" }}>
-            <div>
-              <button onClick={() => { setSortAsc(sortField === "user_name" ? !sortAsc : true); setSortField("user_name"); }} style={{ border: "none", background: "transparent", fontWeight: 600, cursor: "pointer" }}>
-                User {sortField === "user_name" ? (sortAsc ? "▲" : "▼") : ""}
-              </button>
+        <div style={{ background: "#fff", border: `1px solid ${COLORS.lightBlue}`, borderRadius: 12, overflowX: "auto", marginBottom: 16 }}>
+          <div style={{ minWidth: 680 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 1fr 160px 140px", gap: 0, background: COLORS.veryLightBlue, padding: "10px 12px", fontWeight: 600, fontFamily: "Urbanist" }}>
+              <div>
+                <button onClick={() => { setSortAsc(sortField === "user_name" ? !sortAsc : true); setSortField("user_name"); }} style={{ border: "none", background: "transparent", fontWeight: 600, cursor: "pointer" }}>
+                  User {sortField === "user_name" ? (sortAsc ? "▲" : "▼") : ""}
+                </button>
+              </div>
+              <div>Balances (by leave type)</div>
+              <div>Approved (not deducted)</div>
+              <div>
+                <button onClick={() => { setSortAsc(sortField === "created_at_ts" ? !sortAsc : false); setSortField("created_at_ts"); }} style={{ border: "none", background: "transparent", fontWeight: 600, cursor: "pointer" }} title="Sort by run time">
+                  Created At {sortField === "created_at_ts" ? (sortAsc ? "▲" : "▼") : ""}
+                </button>
+              </div>
+              <div style={{ textAlign: "right" }}>Actions</div>
             </div>
-            <div>Balances (by leave type)</div>
-            <div>Approved (not deducted)</div>
-            <div>
-              <button onClick={() => { setSortAsc(sortField === "created_at_ts" ? !sortAsc : false); setSortField("created_at_ts"); }} style={{ border: "none", background: "transparent", fontWeight: 600, cursor: "pointer" }} title="Sort by run time">
-                Created At {sortField === "created_at_ts" ? (sortAsc ? "▲" : "▼") : ""}
-              </button>
-            </div>
-            <div style={{ textAlign: "right" }}>Actions</div>
+
+            {loading && <div style={{ padding: 16, fontFamily: "Urbanist" }}>Loading…</div>}
+            {!loading && sorted.length === 0 && <div style={{ padding: 16, fontFamily: "Urbanist", color: COLORS.gray }}>No backups found for this period.</div>}
+
+            {!loading && sorted.map(row => (
+              <div key={row.id} style={{ display: "grid", gridTemplateColumns: "220px 1fr 1fr 160px 140px", gap: 0, padding: "10px 12px", borderTop: "1px solid #eee", alignItems: "center" }}>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <strong style={{ fontFamily: "Urbanist" }}>{row.user_name || "(no name)"}</strong>
+                  <span style={{ fontFamily: "Calibri, system-ui", fontSize: 12, color: COLORS.gray }}>{row.user_email}</span>
+                </div>
+                <div style={{ fontFamily: "Calibri, system-ui", fontSize: 14 }}>
+                  {Object.keys(row.balances || {}).length === 0 && <span style={{ color: COLORS.gray }}>(empty)</span>}
+                  {Object.entries(row.balances || {}).map(([k, v]) => <Pill key={k} tone="info">{leaveTypeName(k)}: <strong style={{ marginLeft: 4 }}>{v}</strong></Pill>)}
+                </div>
+                <div style={{ fontFamily: "Calibri, system-ui", fontSize: 14 }}>
+                  {Object.keys(row.approvals || {}).length === 0 && <span style={{ color: COLORS.gray }}>(none)</span>}
+                  {Object.entries(row.approvals || {}).map(([k, v]) => <Pill key={k} tone="warn">{leaveTypeName(k)}: <strong style={{ marginLeft: 4 }}>{v}</strong></Pill>)}
+                </div>
+                <div style={{ fontFamily: "Urbanist, system-ui", fontSize: 13 }} title={row.run_ts ? `Run: ${new Date(row.run_ts).toISOString()}` : undefined}>
+                  {row.snapshot_date}
+                  {row.run_ts && <div style={{ fontSize: 12, opacity: 0.7 }}>({new Date(row.run_ts).toISOString().slice(11, 19)}Z)</div>}
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                  <button onClick={() => setSelected(row)} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${COLORS.blue}`, background: "#fff", fontFamily: "Urbanist" }}>View</button>
+                  <button onClick={() => exportOneCSV(row)} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${COLORS.orange}`, background: "#fff", fontFamily: "Urbanist" }}>CSV</button>
+                  <button onClick={() => exportOneJSON(row)} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${COLORS.gray}`, background: "#fff", fontFamily: "Urbanist" }}>JSON</button>
+                </div>
+              </div>
+            ))}
           </div>
-
-          {loading && <div style={{ padding: 16, fontFamily: "Urbanist" }}>Loading…</div>}
-          {!loading && sorted.length === 0 && <div style={{ padding: 16, fontFamily: "Urbanist", color: COLORS.gray }}>No backups found for this period.</div>}
-
-          {!loading && sorted.map(row => (
-            <div key={row.id} style={{ display: "grid", gridTemplateColumns: "220px 1fr 1fr 160px 140px", gap: 0, padding: "10px 12px", borderTop: "1px solid #eee", alignItems: "center" }}>
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                <strong style={{ fontFamily: "Urbanist" }}>{row.user_name || "(no name)"}</strong>
-                <span style={{ fontFamily: "Calibri, system-ui", fontSize: 12, color: COLORS.gray }}>{row.user_email}</span>
-              </div>
-              <div style={{ fontFamily: "Calibri, system-ui", fontSize: 14 }}>
-                {Object.keys(row.balances || {}).length === 0 && <span style={{ color: COLORS.gray }}>(empty)</span>}
-                {Object.entries(row.balances || {}).map(([k, v]) => <Pill key={k} tone="info">{leaveTypeName(k)}: <strong style={{ marginLeft: 4 }}>{v}</strong></Pill>)}
-              </div>
-              <div style={{ fontFamily: "Calibri, system-ui", fontSize: 14 }}>
-                {Object.keys(row.approvals || {}).length === 0 && <span style={{ color: COLORS.gray }}>(none)</span>}
-                {Object.entries(row.approvals || {}).map(([k, v]) => <Pill key={k} tone="warn">{leaveTypeName(k)}: <strong style={{ marginLeft: 4 }}>{v}</strong></Pill>)}
-              </div>
-              <div style={{ fontFamily: "Urbanist, system-ui", fontSize: 13 }} title={row.run_ts ? `Run: ${new Date(row.run_ts).toISOString()}` : undefined}>
-                {row.snapshot_date}
-                {row.run_ts && <div style={{ fontSize: 12, opacity: 0.7 }}>({new Date(row.run_ts).toISOString().slice(11, 19)}Z)</div>}
-              </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <button onClick={() => setSelected(row)} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${COLORS.blue}`, background: "#fff", fontFamily: "Urbanist" }}>View</button>
-                <button onClick={() => exportOneCSV(row)} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${COLORS.orange}`, background: "#fff", fontFamily: "Urbanist" }}>CSV</button>
-                <button onClick={() => exportOneJSON(row)} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${COLORS.gray}`, background: "#fff", fontFamily: "Urbanist" }}>JSON</button>
-              </div>
-            </div>
-          ))}
         </div>
       </CollapsibleSection>
 
@@ -391,68 +393,72 @@ export default function AdminBackups() {
           )
         }
       >
-        <div style={{ background: "#fff", border: `1px solid ${COLORS.lightBlue}`, borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 1fr", gap: 0, background: COLORS.veryLightBlue, padding: "10px 12px", fontWeight: 600, fontFamily: "Urbanist" }}>
-            <div>User</div>
-            <div>Deducted (processed)</div>
-            <div>Approved (pending deduction)</div>
+        <div style={{ background: "#fff", border: `1px solid ${COLORS.lightBlue}`, borderRadius: 12, overflowX: "auto", marginBottom: 16 }}>
+          <div style={{ minWidth: 480 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 1fr", gap: 0, background: COLORS.veryLightBlue, padding: "10px 12px", fontWeight: 600, fontFamily: "Urbanist" }}>
+              <div>User</div>
+              <div>Deducted (processed)</div>
+              <div>Approved (pending deduction)</div>
+            </div>
+
+            {loading && <div style={{ padding: 16, fontFamily: "Urbanist" }}>Loading…</div>}
+            {!loading && usageSorted.length === 0 && (
+              <div style={{ padding: 16, fontFamily: "Urbanist", color: COLORS.gray }}>No approved or deducted leaves starting in this month.</div>
+            )}
+
+            {!loading && usageSorted.map(({ user_id, name, email, types }) => {
+              const deductedEntries = Object.entries(types).filter(([, v]) => v.deducted > 0);
+              const approvedEntries = Object.entries(types).filter(([, v]) => v.approved > 0);
+              return (
+                <div key={user_id} style={{ display: "grid", gridTemplateColumns: "220px 1fr 1fr", gap: 0, padding: "10px 12px", borderTop: "1px solid #eee", alignItems: "center" }}>
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    <strong style={{ fontFamily: "Urbanist" }}>{name || "(no name)"}</strong>
+                    <span style={{ fontFamily: "Calibri, system-ui", fontSize: 12, color: COLORS.gray }}>{email}</span>
+                  </div>
+                  <div style={{ fontFamily: "Calibri, system-ui", fontSize: 14 }}>
+                    {deductedEntries.length === 0 && <span style={{ color: COLORS.gray }}>—</span>}
+                    {deductedEntries.map(([tid, v]) => (
+                      <Pill key={tid} tone="info">{leaveTypeName(tid)}: <strong style={{ marginLeft: 4 }}>{v.deducted}</strong></Pill>
+                    ))}
+                  </div>
+                  <div style={{ fontFamily: "Calibri, system-ui", fontSize: 14 }}>
+                    {approvedEntries.length === 0 && <span style={{ color: COLORS.gray }}>—</span>}
+                    {approvedEntries.map(([tid, v]) => (
+                      <Pill key={tid} tone="warn">{leaveTypeName(tid)}: <strong style={{ marginLeft: 4 }}>{v.approved}</strong></Pill>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-
-          {loading && <div style={{ padding: 16, fontFamily: "Urbanist" }}>Loading…</div>}
-          {!loading && usageSorted.length === 0 && (
-            <div style={{ padding: 16, fontFamily: "Urbanist", color: COLORS.gray }}>No approved or deducted leaves starting in this month.</div>
-          )}
-
-          {!loading && usageSorted.map(({ user_id, name, email, types }) => {
-            const deductedEntries = Object.entries(types).filter(([, v]) => v.deducted > 0);
-            const approvedEntries = Object.entries(types).filter(([, v]) => v.approved > 0);
-            return (
-              <div key={user_id} style={{ display: "grid", gridTemplateColumns: "220px 1fr 1fr", gap: 0, padding: "10px 12px", borderTop: "1px solid #eee", alignItems: "center" }}>
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  <strong style={{ fontFamily: "Urbanist" }}>{name || "(no name)"}</strong>
-                  <span style={{ fontFamily: "Calibri, system-ui", fontSize: 12, color: COLORS.gray }}>{email}</span>
-                </div>
-                <div style={{ fontFamily: "Calibri, system-ui", fontSize: 14 }}>
-                  {deductedEntries.length === 0 && <span style={{ color: COLORS.gray }}>—</span>}
-                  {deductedEntries.map(([tid, v]) => (
-                    <Pill key={tid} tone="info">{leaveTypeName(tid)}: <strong style={{ marginLeft: 4 }}>{v.deducted}</strong></Pill>
-                  ))}
-                </div>
-                <div style={{ fontFamily: "Calibri, system-ui", fontSize: 14 }}>
-                  {approvedEntries.length === 0 && <span style={{ color: COLORS.gray }}>—</span>}
-                  {approvedEntries.map(([tid, v]) => (
-                    <Pill key={tid} tone="warn">{leaveTypeName(tid)}: <strong style={{ marginLeft: 4 }}>{v.approved}</strong></Pill>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
         </div>
       </CollapsibleSection>
 
       {/* ── Backup Run Logs ── */}
       <CollapsibleSection title="Backup Run Logs" count={logs.length || null} defaultOpen={false}>
-        <div style={{ background: "#fff", border: `1px solid ${COLORS.lightBlue}`, borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "180px 120px 1fr", gap: 0, background: COLORS.veryLightBlue, padding: "10px 12px", fontWeight: 600, fontFamily: "Urbanist" }}>
-            <div>Timestamp (UTC)</div>
-            <div>Status</div>
-            <div>Details</div>
-          </div>
-          {logs.length === 0 && <div style={{ padding: 16, fontFamily: "Urbanist", color: COLORS.gray }}>No logs for this period.</div>}
-          {logs.map(log => (
-            <div key={log.id} style={{ display: "grid", gridTemplateColumns: "180px 120px 1fr", gap: 0, padding: "10px 12px", borderTop: "1px solid #eee" }}>
-              <div style={{ fontFamily: "Urbanist" }}>{new Date(log.created_at_ts).toISOString().replace(".000Z", "Z")}</div>
-              <div>
-                {log.status === "success" && <Pill tone="ok">success</Pill>}
-                {log.status === "error" && <Pill tone="error">error</Pill>}
-                {!["success", "error"].includes(log.status) && <Pill tone="warn">{log.status}</Pill>}
-              </div>
-              <div style={{ fontFamily: "Calibri, system-ui", fontSize: 14, whiteSpace: "pre-wrap" }}>
-                {log.row_count != null && <div><strong>Rows:</strong> {log.row_count}</div>}
-                {typeof log.details === "string" ? log.details : JSON.stringify(log.details)}
-              </div>
+        <div style={{ background: "#fff", border: `1px solid ${COLORS.lightBlue}`, borderRadius: 12, overflowX: "auto", marginBottom: 24 }}>
+          <div style={{ minWidth: 380 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "180px 120px 1fr", gap: 0, background: COLORS.veryLightBlue, padding: "10px 12px", fontWeight: 600, fontFamily: "Urbanist" }}>
+              <div>Timestamp (UTC)</div>
+              <div>Status</div>
+              <div>Details</div>
             </div>
-          ))}
+            {logs.length === 0 && <div style={{ padding: 16, fontFamily: "Urbanist", color: COLORS.gray }}>No logs for this period.</div>}
+            {logs.map(log => (
+              <div key={log.id} style={{ display: "grid", gridTemplateColumns: "180px 120px 1fr", gap: 0, padding: "10px 12px", borderTop: "1px solid #eee" }}>
+                <div style={{ fontFamily: "Urbanist" }}>{new Date(log.created_at_ts).toISOString().replace(".000Z", "Z")}</div>
+                <div>
+                  {log.status === "success" && <Pill tone="ok">success</Pill>}
+                  {log.status === "error" && <Pill tone="error">error</Pill>}
+                  {!["success", "error"].includes(log.status) && <Pill tone="warn">{log.status}</Pill>}
+                </div>
+                <div style={{ fontFamily: "Calibri, system-ui", fontSize: 14, whiteSpace: "pre-wrap" }}>
+                  {log.row_count != null && <div><strong>Rows:</strong> {log.row_count}</div>}
+                  {typeof log.details === "string" ? log.details : JSON.stringify(log.details)}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </CollapsibleSection>
 
